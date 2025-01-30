@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { motion } from "framer-motion"
 import { Navbar } from "@/components/Navbar"
 import { DashboardSidebar } from "@/components/Sidebar"
 import { useLayout } from "@/providers/layout-providers"
@@ -9,13 +10,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { isSidebarOpen } = useLayout()
 
   return (
-    <>
+    <div className="flex min-h-screen">
       <DashboardSidebar />
-      <main className="main-container min-h-screen bg-gray-50" data-sidebar-open={isSidebarOpen}>
+      <motion.div
+        className="flex flex-col flex-1"
+        initial={false}
+        animate={{
+          marginLeft: isSidebarOpen ? "240px" : "70px",
+        }}
+        transition={{ duration: 0.3, ease: "easeInOut" }}
+      >
         <Navbar />
-        {children}
-      </main>
-    </>
+        <main className="flex-1 bg-gray-50 p-6 overflow-auto">{children}</main>
+      </motion.div>
+    </div>
   )
 }
 

@@ -5,7 +5,7 @@ import { createContext, useContext, useState, useEffect } from "react"
 
 type LayoutContextType = {
   isSidebarOpen: boolean
-  toggleSidebar: () => void
+  setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 const LayoutContext = createContext<LayoutContextType | undefined>(undefined)
@@ -13,6 +13,19 @@ const LayoutContext = createContext<LayoutContextType | undefined>(undefined)
 export function LayoutProvider({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isHovering, setIsHovering] = useState(false)
+
+  useEffect(() => {
+    const handleMouseEnter = () => setIsHovering(true)
+    const handleMouseLeave = () => setIsHovering(false)
+
+    document.addEventListener("sidebar:hover:enter", handleMouseEnter)
+    document.addEventListener("sidebar:hover:leave", handleMouseLeave)
+
+    return () => {
+      document.removeEventListener("sidebar:hover:enter", handleMouseEnter)
+      document.removeEventListener("sidebar:hover:leave", handleMouseLeave)
+    }
+  }, [])
 
   useEffect(() => {
     let timeout: NodeJS.Timeout
@@ -26,19 +39,7 @@ export function LayoutProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timeout)
   }, [isHovering])
 
-  const toggleSidebar = () => setIsSidebarOpen((prev) => !prev)
-
-  return (
-    <LayoutContext.Provider value={{ isSidebarOpen, toggleSidebar }}>
-      <div
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
-        className="fixed left-0 top-0 z-50 h-full w-[var(--sidebar-width-collapsed)] hover:w-[var(--sidebar-width)]"
-      >
-        {children}
-      </div>
-    </LayoutContext.Provider>
-  )
+  return <LayoutContext.Provider value={{ isSidebarOpen, setIsSidebarOpen }}>{children}</LayoutContext.Provider>
 }
 
 export function useLayout() {

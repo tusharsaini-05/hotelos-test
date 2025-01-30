@@ -14,11 +14,12 @@ export function Navbar() {
 
   return (
     <motion.header
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="sticky top-0 z-40 flex h-[var(--navbar-height)] items-center border-b bg-white/80 px-4 backdrop-blur-md md:px-6"
-      data-sidebar-open={isSidebarOpen}
+      initial={false}
+      animate={{
+        width: isSidebarOpen ? "calc(100% - 240px)" : "calc(100% - 70px)",
+      }}
+      transition={{ duration: 0.3, ease: "easeInOut" }}
+      className="sticky top-0 z-40 flex h-16 items-center border-b bg-white/80 px-4 backdrop-blur-md md:px-6"
     >
       <div className="flex items-center gap-4 md:gap-6">
         <Image

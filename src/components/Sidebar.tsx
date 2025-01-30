@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { motion } from "framer-motion"
-import { useLayout } from "@/providers/layout-providers"
+import { useState, useEffect } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   Users,
   BedDouble,
@@ -15,6 +15,7 @@ import {
   Activity,
   FileText,
 } from "lucide-react"
+import { useLayout } from "@/providers/layout-providers"
 
 const menuItems = [
   { name: "Orders", icon: ClipboardList, href: "/orders" },
@@ -31,18 +32,33 @@ const menuItems = [
 ]
 
 export function DashboardSidebar() {
-  const { isSidebarOpen } = useLayout()
+  const { isSidebarOpen, setIsSidebarOpen } = useLayout()
+  const [isHovering, setIsHovering] = useState(false)
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout
+    if (!isHovering) {
+      timeout = setTimeout(() => {
+        setIsSidebarOpen(false)
+      }, 300)
+    } else {
+      setIsSidebarOpen(true)
+    }
+    return () => clearTimeout(timeout)
+  }, [isHovering, setIsSidebarOpen])
 
   return (
     <motion.div
+      className="fixed left-0 top-0 z-50 h-screen bg-gradient-to-b from-gray-900 to-gray-800 shadow-xl"
       initial={false}
       animate={{
         width: isSidebarOpen ? 240 : 70,
-        transition: { duration: 0.3, ease: "easeInOut" },
       }}
-      className="fixed left-0 top-0 h-screen bg-gradient-to-b from-gray-900 to-gray-800 shadow-xl"
+      transition={{ duration: 0.3, ease: "easeInOut" }}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
     >
-      <div className="flex h-[var(--navbar-height)] items-center justify-center border-b border-gray-700/50">
+      <div className="flex h-16 items-center justify-center">
         <motion.div
           animate={{ opacity: isSidebarOpen ? 1 : 0 }}
           transition={{ duration: 0.2 }}
@@ -59,16 +75,18 @@ export function DashboardSidebar() {
               className="group mb-2 flex cursor-pointer items-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-800"
             >
               <item.icon className="h-5 w-5" />
-              <motion.span
-                animate={{
-                  opacity: isSidebarOpen ? 1 : 0,
-                  x: isSidebarOpen ? 0 : -10,
-                }}
-                transition={{ duration: 0.2 }}
-                className="ml-3 origin-left"
-              >
-                {item.name}
-              </motion.span>
+              <AnimatePresence>
+                {isSidebarOpen && (
+                  <motion.span
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    className="ml-3"
+                  >
+                    {item.name}
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </motion.div>
           </Link>
         ))}

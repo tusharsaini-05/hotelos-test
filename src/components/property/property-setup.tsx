@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { ChevronRight, ImageIcon, Building2, Info, Upload, Plus } from "lucide-react"
 import { motion } from "framer-motion"
 import Image from "next/image"
@@ -7,8 +8,26 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Card } from "@/components/ui/card"
+import { AddRoomsModal } from "@/components/rooms/add-rooms-modal"
+import { EditFloorModal } from "@/components/rooms/edit-floor-modal"
+import { RoomPhotos } from "@/components/rooms/room-photos"
 
 export function PropertySetup() {
+  const [isAddRoomsOpen, setIsAddRoomsOpen] = useState(false)
+  const [isEditFloorOpen, setIsEditFloorOpen] = useState(false)
+  const [selectedFloor, setSelectedFloor] = useState<number | null>(null)
+  const [showRoomPhotos, setShowRoomPhotos] = useState(false)
+
+  const handleEditFloor = (floorId: number) => {
+    setSelectedFloor(floorId)
+    setIsEditFloorOpen(true)
+    setIsAddRoomsOpen(false)
+  }
+
+  if (showRoomPhotos) {
+    return <RoomPhotos onBack={() => setShowRoomPhotos(false)} />
+  }
+
   return (
     <div className="container mx-auto p-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="grid gap-8 lg:grid-cols-2">
@@ -37,7 +56,7 @@ export function PropertySetup() {
                     <div className="text-sm text-gray-500">
                       {12} of {15} photos uploaded
                     </div>
-                    <Button variant="default" size="sm">
+                    <Button variant="default" size="sm" onClick={() => setShowRoomPhotos(true)}>
                       Review
                     </Button>
                   </div>
@@ -67,7 +86,7 @@ export function PropertySetup() {
               </AccordionTrigger>
               <AccordionContent className="px-4 pb-4">
                 <div className="space-y-4">
-                  <Button variant="outline" className="w-full justify-start">
+                  <Button variant="outline" className="w-full justify-start" onClick={() => setIsAddRoomsOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
                     Add New Room
                   </Button>
@@ -109,6 +128,14 @@ export function PropertySetup() {
           />
         </div>
       </motion.div>
+
+      <AddRoomsModal isOpen={isAddRoomsOpen} onClose={() => setIsAddRoomsOpen(false)} onEditFloor={handleEditFloor} />
+
+      <EditFloorModal
+        isOpen={isEditFloorOpen}
+        onClose={() => setIsEditFloorOpen(false)}
+        floorNumber={selectedFloor || 2}
+      />
     </div>
   )
 }
