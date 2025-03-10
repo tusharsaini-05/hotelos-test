@@ -21,7 +21,7 @@ export const CREATE_HOTEL = gql`
       policies {
         checkInTime
         checkOutTime
-        cancellationPolicy
+        cancellationHours
       }
       images
       createdAt
