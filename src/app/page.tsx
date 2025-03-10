@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { NEXT_AUTH_CONFIG } from "@/lib/auth";
 // app/page.js
 import { ApolloClient,ApolloProvider,InMemoryCache } from "@apollo/client";
+import HotelForm from "@/components/Hotels/createHotelform";
 import App from "./app"
 
 const client = new ApolloClient({
@@ -25,6 +26,7 @@ export default async function Home() {
   <div>
     {JSON.stringify(session)}
     <App />
+    <HotelForm />
   </div>
   );
 }
