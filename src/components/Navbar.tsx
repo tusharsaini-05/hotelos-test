@@ -1,5 +1,5 @@
 "use client"
-
+import { signIn, signOut } from "next-auth/react"
 import { Bell, Search, MessageSquare } from "lucide-react"
 import Image from "next/image"
 import { motion } from "framer-motion"
@@ -63,6 +63,7 @@ export function Navbar() {
           />
           <div className="hidden md:block">
             <div className="text-sm font-medium">Admin User</div>
+            <button onClick={() => signOut()}>Sign out</button>
             <div className="text-xs text-gray-500">admin@hotel.com</div>
           </div>
         </div>
