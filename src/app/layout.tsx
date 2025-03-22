@@ -2,12 +2,14 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { LayoutProvider } from "@/providers/layout-providers"
-import { AppShell } from "@/providers/app-shell"
-import type React from "react" // Added import for React
-import {Providers} from "./provider"
+import type React from "react"
+import { Providers } from "../providers/provider"
 import { ApoloProviders } from "@/providers/apollo-providers"
-const inter = Inter({ subsets: ["latin"] })
+import { ToastContextProvider } from '@/components/ui/use-toast'
+import { ConditionalAppShell } from "@/components/ConditionalAppShell"
+import { HotelProvider } from "@/providers/hotel-provider"
 
+const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Hotel Management System",
@@ -23,19 +25,19 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <body className={`${inter.className} h-full`}>
         <ApoloProviders>
-        <LayoutProvider>
-          <AppShell>
+          <ToastContextProvider>
             <Providers>
-              {children}
+            <HotelProvider>
+              <LayoutProvider>
+                <ConditionalAppShell>
+                  {children}
+                </ConditionalAppShell>
+              </LayoutProvider>
+            </HotelProvider>
             </Providers>
-          </AppShell>
-        </LayoutProvider>
+          </ToastContextProvider>
         </ApoloProviders>
-        
-        
-      
       </body>
     </html>
   )
 }
-

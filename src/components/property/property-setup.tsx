@@ -32,7 +32,7 @@ export function PropertySetup() {
     <div className="container mx-auto p-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="grid gap-8 lg:grid-cols-2">
         <div>
-          <h1 className="mb-6 text-2xl font-semibold">Your OYO Property</h1>
+          <h1 className="mb-6 text-2xl font-semibold">Your Property</h1>
 
           <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="photos" className="border rounded-lg mb-4">
