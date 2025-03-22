@@ -1,6 +1,9 @@
 "use client"
-import { signIn, signOut } from "next-auth/react"
-import { Bell, Search, MessageSquare } from "lucide-react"
+
+import { useState } from "react"
+import { signIn, signOut, useSession } from "next-auth/react"
+import { Bell, Search, MessageSquare, ChevronDown, User, Settings, LogOut } from "lucide-react"
+import { Hotel as HotelIcon } from "lucide-react" // Renamed to avoid conflicts
 import Image from "next/image"
 import { motion } from "framer-motion"
 import { useLayout } from "@/providers/layout-providers"
@@ -8,9 +11,31 @@ import { useLayout } from "@/providers/layout-providers"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+// Import the hotel context and type
+import { useHotelContext } from "@/providers/hotel-provider"
+import type { Hotel } from "@/providers/hotel-provider"
 
 export function Navbar() {
   const { isSidebarOpen } = useLayout()
+  const { data: session } = useSession()
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const { selectedHotel, setSelectedHotel, userHotels } = useHotelContext()
+
+  const handleHotelSelect = (hotel: Hotel) => {
+    setSelectedHotel(hotel)
+    // You might want to trigger data refetching or context changes here
+    console.log(`Selected hotel: ${hotel.name}`)
+  }
 
   return (
     <motion.header
@@ -23,7 +48,7 @@ export function Navbar() {
     >
       <div className="flex items-center gap-4 md:gap-6">
         <Image
-          src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/image-l3QW4FaCX6v3jrnwf7OYXXXxY3LctK.png"
+          src="https://t4.ftcdn.net/jpg/04/64/21/59/360_F_464215993_LWZKZ52fQKt4YDQ43b50koqZgn9WxHzA.jpg"
           alt="Logo"
           width={100}
           height={40}
@@ -36,6 +61,16 @@ export function Navbar() {
           </div>
         </div>
       </div>
+      
+      {selectedHotel && (
+        <div className="hidden md:flex mx-4 items-center">
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-3 py-1">
+            <HotelIcon className="h-3.5 w-3.5 mr-1" />
+            {selectedHotel.name}
+          </Badge>
+        </div>
+      )}
+      
       <div className="ml-auto flex items-center gap-4">
         <Button
           variant="default"
@@ -43,32 +78,75 @@ export function Navbar() {
         >
           New Booking
         </Button>
-        <div className="relative">
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-5 w-5" />
-            <Badge className="absolute -right-1 -top-1 h-5 w-5 rounded-full bg-red-500 p-0 text-[10px]">3</Badge>
-          </Button>
-        </div>
-        <Button variant="ghost" size="icon" className="relative">
-          <MessageSquare className="h-5 w-5" />
-          <Badge className="absolute -right-1 -top-1 h-5 w-5 rounded-full bg-blue-500 p-0 text-[10px]">5</Badge>
-        </Button>
-        <div className="flex items-center gap-2">
-          <Image
-            src="/placeholder.svg?height=32&width=32"
-            alt="Avatar"
-            width={32}
-            height={32}
-            className="rounded-full ring-2 ring-gray-100"
-          />
-          <div className="hidden md:block">
-            <div className="text-sm font-medium">Admin User</div>
-            <button onClick={() => signOut()}>Sign out</button>
-            <div className="text-xs text-gray-500">admin@hotel.com</div>
-          </div>
-        </div>
+        
+        {/* Profile dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-2 rounded-full p-1 transition-colors hover:bg-gray-100 focus:outline-none">
+              <Image
+                src="/profile.png"
+                alt="Avatar"
+                width={32}
+                height={32}
+                className="rounded-full ring-2 ring-gray-100"
+              />
+              <div className="hidden md:block text-left">
+                <div className="text-sm font-medium">
+                  {session?.user?.name || "Admin User"}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {session?.user?.email || "admin@hotel.com"}
+                </div>
+              </div>
+              <ChevronDown className="hidden h-4 w-4 text-gray-500 md:block" />
+            </button>
+          </DropdownMenuTrigger>
+          
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuLabel>
+              <div className="font-normal">Signed in as</div>
+              <div className="font-medium truncate">{session?.user?.email}</div>
+            </DropdownMenuLabel>
+            
+            <DropdownMenuSeparator />
+            
+            <DropdownMenuGroup>
+              <DropdownMenuItem>
+                <User className="mr-2 h-4 w-4" />
+                <span>Update Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Settings className="mr-2 h-4 w-4" />
+                <span>Update Hotels</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            
+            <DropdownMenuSeparator />
+            
+            <DropdownMenuLabel>Your Hotels</DropdownMenuLabel>
+            {userHotels.map((hotel) => (
+              <DropdownMenuItem 
+                key={hotel.id} 
+                onClick={() => handleHotelSelect(hotel)}
+                className={selectedHotel?.id === hotel.id ? "bg-gray-100" : ""}
+              >
+                <HotelIcon className="mr-2 h-4 w-4" />
+                <div className="flex flex-col">
+                  <span className="font-medium">{hotel.name}</span>
+                  <span className="text-xs text-gray-500">{hotel.id}</span>
+                </div>
+              </DropdownMenuItem>
+            ))}
+            
+            <DropdownMenuSeparator />
+            
+            <DropdownMenuItem onClick={() => signOut()}>
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Sign out</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </motion.header>
   )
 }
-
