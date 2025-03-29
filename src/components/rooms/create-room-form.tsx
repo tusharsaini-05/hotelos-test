@@ -126,18 +126,16 @@ export default function CreateRoomForm({ onSuccess }: CreateRoomFormProps) {
         },
         body: JSON.stringify({
           query: `
-            mutation CreateRoom($input: roomData!) {
-              room {
-                createRoom(input: $input) {
-                  id
-                  roomNumber
-                  status
-                }
+            mutation CreateRoom($roomData: RoomInput!) {
+              createRoom(roomData: $roomData) {
+                id
+                roomNumber
+                status
               }
             }
           `,
           variables: {
-            input: submissionValues,
+            roomData: submissionValues,  // Changed from 'input' to 'roomData'
           }
         })
       });

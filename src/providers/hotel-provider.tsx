@@ -17,6 +17,8 @@ export type Hotel = {
   images: string[]
   createdAt: string
   updatedAt: string
+  floorCount: number
+	roomCount : number
 }
 
 // Define the context type
@@ -97,6 +99,8 @@ export function HotelProvider({ children }: { children: React.ReactNode }) {
                   images
                   createdAt
                   updatedAt
+                  floorCount
+			            roomCount
                 }
               }
             }
