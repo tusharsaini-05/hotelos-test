@@ -21,7 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         transition={{ duration: 0.3, ease: "easeInOut" }}
       >
         <Navbar />
-        <main className="flex-1 bg-gray-50 p-6 overflow-auto">{children}</main>
+        <main className="flex-1 bg-gray-50 p-1 overflow-scroll">{children}</main>
       </motion.div>
     </div>
   )

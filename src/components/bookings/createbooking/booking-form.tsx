@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -107,10 +108,12 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
   const extraBedFee = watchExtraBed ? 50 : 0
   const totalAmount = selectedRoomPrice * nights + extraBedFee
 
-  // Update total amount when calculation changes
-  if (form.getValues("totalAmount") !== totalAmount) {
-    form.setValue("totalAmount", totalAmount)
-  }
+  // Use useEffect to update the form value after rendering
+  React.useEffect(() => {
+    if (form.getValues("totalAmount") !== totalAmount) {
+      form.setValue("totalAmount", totalAmount)
+    }
+  }, [form, totalAmount])
 
   async function onSubmit(values: FormValues) {
     setIsSubmitting(true)
