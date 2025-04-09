@@ -1,48 +1,420 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { format, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns"
+import { useState, useEffect, useContext } from "react"
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, addDays } from "date-fns"
 import { ChevronLeft, ChevronRight, Calendar, Filter, RefreshCw, HelpCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useToast } from "@/components/ui/use-toast"
 import BookingCalendar from "./booking-calendar"
 import BookingDetails from "./booking-details"
+import { useHotelContext } from "@/providers/hotel-provider"
+import { useSession } from "next-auth/react"
 import { generateMockBookings } from "./mock-data"
 
+// Define TypeScript interfaces
+export interface Guest {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+}
+
+export interface Payment {
+  amount: number;
+  status: string;
+  __typename: string;
+  transactionId: string;
+  transactionDate: string;
+}
+
+export interface RoomCharge {
+  amount: number;
+  chargeDate: string;
+  chargeType: string;
+  description: string;
+}
+
+export interface Booking {
+  id: string;
+  bookingNumber: string;
+  guest: Guest;
+  checkInDate: string;
+  checkOutDate: string;
+  roomType: string;
+  bookingStatus: string;
+  paymentStatus: string;
+  totalAmount: number;
+  ratePlan?: string;
+  payments?: Payment[];
+  taxAmount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
+  baseAmount?: number;
+  roomCharges?: RoomCharge[];
+  specialRequests?: string;
+  cancellationDate?: string;
+  cancellationReason?: string;
+  roomId?: string;
+  numberOfGuests: number;
+  numberOfRooms?: number;
+  roomNumber: string;  // Made required
+  floor: number;       // Made required
+  externalReference?: string;
+  children?: number;
+  pendingAmount?: number;
+  notes?: string;
+}
+
+export interface Room {
+  id: string;
+  hotelId: string;
+  roomNumber: string;
+  roomType: string;
+  bedType?: string;
+  pricePerNight: number;
+  status: string;
+  amenities?: string[];
+  isActive: boolean;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  __typename?: string;
+  lastCleaned?: string;
+  maxOccupancy?: number;
+  baseOccupancy?: number;
+  extraBedPrice?: number;
+  lastMaintained?: string;
+  extraBedAllowed?: boolean;
+  maintenanceNotes?: string;
+  floor: number;
+  roomSize?: number;
+  isPinned?: boolean;
+  images?: string[];
+}
+
+export interface OccupancyData {
+  date: Date;
+  percentage: number;
+  available: number;
+}
+
 export default function BookingAnalytics() {
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState<Date>(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-  const [bookings, setBookings] = useState<any[]>([])
-  const [selectedBooking, setSelectedBooking] = useState<any | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [showBookingDetails, setShowBookingDetails] = useState(false)
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [roomDetails, setRoomDetails] = useState<Record<string, Room>>({})
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [showBookingDetails, setShowBookingDetails] = useState<boolean>(false)
 
   // Filter states
   const [selectedFloor, setSelectedFloor] = useState<string>("all")
   const [selectedRoomType, setSelectedRoomType] = useState<string>("all")
   const [selectedStatus, setSelectedStatus] = useState<string>("all")
+  
+  // Access hotel context and session
+  const { selectedHotel } = useHotelContext()
+  const { data: session } = useSession()
+  const { toast } = useToast()
 
   useEffect(() => {
-    const fetchBookings = async () => {
-      setIsLoading(true)
-      try {
-        // In a real app, this would be a GraphQL query using the provided queries
-        // For example: const { data } = await client.query({ query: GET_BOOKINGS, variables: { ... } });
-
-        // Using mock data for demonstration
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        const mockData = generateMockBookings(currentDate)
-        setBookings(mockData)
-      } catch (error) {
-        console.error("Error fetching bookings:", error)
-      } finally {
-        setIsLoading(false)
-      }
+    if (selectedHotel?.id) {
+      fetchBookings()
+      fetchRooms()
     }
+  }, [currentDate, selectedHotel])
 
-    fetchBookings()
-  }, [currentDate])
+  // Fetch detailed room information by ID
+  const fetchRoomDetails = async (roomId: string): Promise<Room | null> => {
+    try {
+      const response = await fetch("http://localhost:8000/graphql", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
+        },
+        body: JSON.stringify({
+          query: `
+            query {
+              room(roomId: "${roomId}") {
+                id
+                hotelId
+                roomNumber
+                roomType
+                bedType
+                pricePerNight
+                status
+                amenities
+                description
+                images
+                isActive
+                createdAt
+                updatedAt
+                lastCleaned
+                maxOccupancy
+                baseOccupancy
+                extraBedPrice
+                lastMaintained
+                extraBedAllowed
+                maintenanceNotes
+                floor
+                roomSize
+              }
+            }
+          `
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (result.data && result.data.room) {
+        return result.data.room as Room
+      }
+      return null
+    } catch (error) {
+      console.error(`Error fetching room details for ${roomId}:`, error)
+      return null
+    }
+  }
+
+  // Batch fetch room details for multiple bookings
+  const fetchAllRoomDetails = async (bookingsData: Booking[]) => {
+    // Get unique room IDs that need to be fetched
+    const roomIds = [...new Set(bookingsData
+      .filter(booking => booking.roomId && !roomDetails[booking.roomId])
+      .map(booking => booking.roomId as string)
+    )]
+
+    if (roomIds.length === 0) return
+
+    // Fetch details for each room and update the state
+    const newRoomDetails = { ...roomDetails }
+    
+    await Promise.all(roomIds.map(async (roomId) => {
+      const roomDetail = await fetchRoomDetails(roomId)
+      if (roomDetail) {
+        newRoomDetails[roomId] = roomDetail
+      }
+    }))
+
+    setRoomDetails(newRoomDetails)
+  }
+
+  const fetchBookings = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch("http://localhost:8000/graphql", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
+        },
+        body: JSON.stringify({
+          query: `
+            query {
+              bookings(
+                hotelId: "${selectedHotel?.id}"
+              ) {
+                id
+                bookingNumber
+                guest {
+                  firstName
+                  lastName
+                  email
+                }
+                checkInDate
+                checkOutDate
+                roomType
+                bookingStatus
+                paymentStatus
+                totalAmount
+                ratePlan
+                payments {
+                  amount
+                  status
+                  __typename
+                  transactionId
+                  transactionDate
+                }
+                taxAmount
+                createdAt
+                updatedAt
+                createdBy
+                updatedBy
+                baseAmount
+                roomCharges {
+                  amount
+                  chargeDate
+                  chargeType
+                  description
+                }
+                specialRequests
+                cancellationDate
+                cancellationReason
+                roomId
+                numberOfGuests
+                numberOfRooms
+                taxAmount
+              }
+            }
+          `
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (result.data && result.data.bookings) {
+        // Process bookings to include room information
+        const bookingsData = result.data.bookings.map((booking: any) => {
+          // If we already have room details cached, use them
+          const room = booking.roomId && roomDetails[booking.roomId] 
+            ? roomDetails[booking.roomId]
+            : rooms.find(r => r.id === booking.roomId) || {
+                roomNumber: "Unknown",
+                floor: 1
+              }
+
+          // Ensure all required fields are present
+          return {
+            ...booking,
+            roomNumber: room.roomNumber || "Unknown",
+            floor: room.floor || 1,
+            checkInDate: booking.checkInDate,
+            checkOutDate: booking.checkOutDate,
+            // Ensure these fields exist (even with default values) for type compatibility
+            paymentStatus: booking.paymentStatus || "PENDING",
+            totalAmount: booking.totalAmount || 0,
+            numberOfGuests: booking.numberOfGuests || 1
+          } as Booking
+        })
+
+        setBookings(bookingsData)
+        
+        // Fetch detailed room information for bookings
+        await fetchAllRoomDetails(bookingsData)
+      } else {
+        console.error("Error fetching bookings: No data in response", result)
+        // Fall back to mock data for development/testing
+        const mockData = generateMockBookings(currentDate)
+        // Ensure mock data includes all required fields
+        const enhancedMockData = mockData.map(booking => ({
+          ...booking,
+          paymentStatus: booking.paymentStatus || "PENDING",
+          totalAmount: booking.totalAmount || 0,
+          numberOfGuests: booking.numberOfGuests || 1
+        })) as Booking[]
+        
+        setBookings(enhancedMockData)
+      }
+    } catch (error) {
+      console.error("Error fetching bookings:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch bookings. Using mock data instead.",
+        variant: "destructive"
+      })
+      
+      // Fall back to mock data with proper types
+      const mockData = generateMockBookings(currentDate)
+      const enhancedMockData = mockData.map(booking => ({
+        ...booking,
+        paymentStatus: "PENDING",
+        totalAmount: booking.totalAmount || 0,
+        numberOfGuests: booking.numberOfGuests || 1
+      })) as Booking[]
+      
+      setBookings(enhancedMockData)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const fetchRooms = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/graphql", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
+        },
+        body: JSON.stringify({
+          query: `
+            query {
+              rooms(
+                hotelId: "${selectedHotel?.id}"
+                limit: 100
+                offset: 0
+              ) {
+                id
+                hotelId
+                roomNumber
+                roomType
+                bedType
+                pricePerNight
+                status
+                amenities
+                isActive
+                createdAt
+                updatedAt
+                __typename
+                lastCleaned
+                maxOccupancy
+                baseOccupancy
+                extraBedPrice
+                lastMaintained
+                extraBedAllowed
+                maintenanceNotes
+                floor
+                roomSize
+              }
+            }
+          `
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (result.data && result.data.rooms) {
+        // Ensure all rooms have the required floor property
+        const processedRooms = result.data.rooms.map((room: any) => ({
+          ...room,
+          floor: room.floor || 1
+        }))
+        setRooms(processedRooms)
+        
+        // Update booking room information with the latest data
+        if (bookings.length > 0) {
+          setBookings(bookings.map(booking => {
+            if (booking.roomId) {
+              const room = processedRooms.find((r: Room) => r.id === booking.roomId)
+              if (room) {
+                return {
+                  ...booking,
+                  roomNumber: room.roomNumber,
+                  floor: room.floor
+                }
+              }
+            }
+            return booking
+          }))
+        }
+      } else {
+        console.error("Error fetching rooms: No data in response", result)
+      }
+    } catch (error) {
+      console.error("Error fetching rooms:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch room information",
+        variant: "destructive"
+      })
+    }
+  }
 
   const handlePreviousMonth = () => {
     const newDate = new Date(currentDate)
@@ -60,9 +432,21 @@ export default function BookingAnalytics() {
     setCurrentDate(new Date())
   }
 
-  const handleBookingClick = (booking: any) => {
+  const handleBookingClick = (booking: Booking) => {
     setSelectedBooking(booking)
     setShowBookingDetails(true)
+    
+    // If the booking has a roomId but detailed info isn't loaded yet, fetch it
+    if (booking.roomId && !roomDetails[booking.roomId]) {
+      fetchRoomDetails(booking.roomId).then(room => {
+        if (room) {
+          setRoomDetails(prev => ({
+            ...prev,
+            [booking.roomId as string]: room
+          }))
+        }
+      })
+    }
   }
 
   const handleCloseDetails = () => {
@@ -71,19 +455,8 @@ export default function BookingAnalytics() {
   }
 
   const handleRefresh = () => {
-    // Refetch bookings
-    const fetchBookings = async () => {
-      setIsLoading(true)
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        const mockData = generateMockBookings(currentDate)
-        setBookings(mockData)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     fetchBookings()
+    fetchRooms()
   }
 
   // Calculate days for the current month view
@@ -91,16 +464,36 @@ export default function BookingAnalytics() {
   const monthEnd = endOfMonth(currentDate)
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
+  // Filter the bookings based on selected filters
+  const filteredBookings = bookings.filter(booking => {
+    // Apply floor filter
+    if (selectedFloor !== "all") {
+      if (booking.floor?.toString() !== selectedFloor) return false
+    }
+    
+    // Apply room type filter
+    if (selectedRoomType !== "all" && booking.roomType !== selectedRoomType) {
+      return false
+    }
+    
+    // Apply status filter
+    if (selectedStatus !== "all" && booking.bookingStatus !== selectedStatus) {
+      return false
+    }
+    
+    return true
+  })
+
   // Calculate occupancy percentages for each day
-  const occupancyData = daysInMonth.map((day) => {
-    const dayBookings = bookings.filter((booking) => {
+  const occupancyData: OccupancyData[] = daysInMonth.map((day) => {
+    const dayBookings = filteredBookings.filter((booking) => {
       const checkIn = new Date(booking.checkInDate)
       const checkOut = new Date(booking.checkOutDate)
       return day >= checkIn && day <= checkOut
     })
 
-    // Assuming 20 rooms total for this example
-    const totalRooms = 20
+    // Get total number of rooms from the API data or fallback to 20
+    const totalRooms = rooms.length > 0 ? rooms.length : 20
     const occupiedRooms = dayBookings.length
     const percentage = Math.round((occupiedRooms / totalRooms) * 100)
 
@@ -110,6 +503,12 @@ export default function BookingAnalytics() {
       available: totalRooms - occupiedRooms,
     }
   })
+
+  // Generate floors list based on available rooms
+  const floors = [...new Set(rooms.map(room => room.floor))].sort((a, b) => a - b)
+  
+  // Generate room types list based on available rooms
+  const roomTypes = [...new Set(rooms.map(room => room.roomType))]
 
   return (
     <div className="container mx-auto py-6 max-w-7xl">
@@ -159,9 +558,9 @@ export default function BookingAnalytics() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Floors</SelectItem>
-                    <SelectItem value="1">Floor 1</SelectItem>
-                    <SelectItem value="2">Floor 2</SelectItem>
-                    <SelectItem value="3">Floor 3</SelectItem>
+                    {floors.map(floor => (
+                      <SelectItem key={floor} value={floor.toString()}>Floor {floor}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -173,23 +572,25 @@ export default function BookingAnalytics() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Room Types</SelectItem>
-                    <SelectItem value="standard">Standard</SelectItem>
-                    <SelectItem value="deluxe">Deluxe</SelectItem>
-                    <SelectItem value="suite">Suite</SelectItem>
+                    {roomTypes.map(type => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Housekeeping Status</span>
+                <span className="text-sm font-medium">Booking Status</span>
                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                   <SelectTrigger className="w-[150px]">
                     <SelectValue placeholder="All Statuses" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="clean">Clean</SelectItem>
-                    <SelectItem value="dirty">Dirty</SelectItem>
-                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                    <SelectItem value="CONFIRMED">Confirmed</SelectItem>
+                    <SelectItem value="CHECKED_IN">Checked In</SelectItem>
+                    <SelectItem value="CHECKED_OUT">Checked Out</SelectItem>
+                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -197,7 +598,7 @@ export default function BookingAnalytics() {
           </div>
 
           <BookingCalendar
-            bookings={bookings}
+            bookings={filteredBookings}
             occupancyData={occupancyData}
             currentDate={currentDate}
             isLoading={isLoading}
@@ -207,9 +608,12 @@ export default function BookingAnalytics() {
       </Card>
 
       {showBookingDetails && selectedBooking && (
-        <BookingDetails booking={selectedBooking} onClose={handleCloseDetails} />
+        <BookingDetails 
+          booking={selectedBooking} 
+          onClose={handleCloseDetails} 
+          roomDetails={selectedBooking.roomId ? roomDetails[selectedBooking.roomId] : undefined}
+        />
       )}
     </div>
   )
 }
-

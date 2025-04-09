@@ -5,20 +5,28 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpRight, ArrowDownRight, Users, Calendar, Hotel, DollarSign } from "lucide-react"
 import { useHotelContext } from "@/providers/hotel-provider"
 
-type OverviewMetricsProps = {
-  data: {
-    totalBookings: number
-    totalBookingsChange: number
-    occupancyRate: number
-    occupancyRateChange: number
-    totalRevenue: number
-    totalRevenueChange: number
-    averageDailyRate: number
-    averageDailyRateChange: number
-    revPAR: number
-    totalGuests: number
-    totalRooms: number
-  }
+interface SelectedHotel {
+  id: string
+  name?: string
+  [key: string]: any
+}
+
+interface OverviewMetricsData {
+  totalBookings: number
+  totalBookingsChange: number
+  occupancyRate: number
+  occupancyRateChange: number
+  totalRevenue: number
+  totalRevenueChange: number
+  averageDailyRate: number
+  averageDailyRateChange: number
+  revPAR: number
+  totalGuests: number
+  totalRooms: number
+}
+
+interface OverviewMetricsProps {
+  data: OverviewMetricsData
   isLoading: boolean
 }
 
@@ -44,7 +52,7 @@ export default function OverviewMetrics({ data, isLoading }: OverviewMetricsProp
     )
   }
 
-  const {selectedHotel} = useHotelContext()
+  const { selectedHotel } = useHotelContext() as { selectedHotel?: SelectedHotel }
 
   return (
     <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
@@ -72,7 +80,7 @@ export default function OverviewMetrics({ data, isLoading }: OverviewMetricsProp
         </CardContent>
       </Card>
 
-      {/* <Card>
+      <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Occupancy Rate</CardTitle>
           <Hotel className="h-4 w-4 text-muted-foreground" />
@@ -94,7 +102,7 @@ export default function OverviewMetrics({ data, isLoading }: OverviewMetricsProp
             <span className="ml-1">from previous period</span>
           </p>
         </CardContent>
-      </Card> */}
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -133,4 +141,3 @@ export default function OverviewMetrics({ data, isLoading }: OverviewMetricsProp
     </div>
   )
 }
-

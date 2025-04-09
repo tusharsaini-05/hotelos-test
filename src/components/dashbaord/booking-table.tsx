@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { format, parseISO } from "date-fns"
 import { ChevronDown, ChevronRight, Eye } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -9,23 +9,48 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
-type BookingTableProps = {
-  bookings: any[]
+interface Guest {
+  firstName: string
+  lastName: string
+  email: string
+  phone?: string
+  address?: string
+  specialRequests?: string
+}
+
+interface Booking {
+  id: string
+  bookingNumber: string
+  guest: Guest
+  checkInDate: string
+  checkOutDate: string
+  roomType: string
+  roomNumber?: string
+  bookingStatus: string
+  paymentStatus?: string
+  totalAmount: number
+  numberOfGuests?: number
+  createdAt?: string
+  [key: string]: any
+}
+
+interface BookingTableProps {
+  bookings: Booking[]
   isLoading: boolean
   isExpandable?: boolean
 }
 
 export default function BookingTable({ bookings, isLoading, isExpandable = false }: BookingTableProps) {
   const [expandedBooking, setExpandedBooking] = useState<string | null>(null)
-  const [selectedBooking, setSelectedBooking] = useState<any | null>(null)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false)
 
-  const handleViewBooking = (booking: any) => {
+  const handleViewBooking = (booking: Booking): void => {
     setSelectedBooking(booking)
     setIsDialogOpen(true)
   }
 
-  const toggleExpand = (bookingId: string) => {
+  const toggleExpand = (bookingId: string): void => {
     if (expandedBooking === bookingId) {
       setExpandedBooking(null)
     } else {
@@ -33,7 +58,7 @@ export default function BookingTable({ bookings, isLoading, isExpandable = false
     }
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string): string => {
     try {
       return format(parseISO(dateString), "MMM d, yyyy")
     } catch (e) {
@@ -69,6 +94,14 @@ export default function BookingTable({ bookings, isLoading, isExpandable = false
     )
   }
 
+  if (!bookings || bookings.length === 0) {
+    return (
+      <div className="py-4 text-center">
+        <p className="text-muted-foreground">No bookings available for the selected period</p>
+      </div>
+    )
+  }
+
   return (
     <>
       <Table>
@@ -87,11 +120,16 @@ export default function BookingTable({ bookings, isLoading, isExpandable = false
         </TableHeader>
         <TableBody>
           {bookings.map((booking) => (
-            <>
-              <TableRow key={booking.id} className="hover:bg-muted/50">
+            <React.Fragment key={booking.id}>
+              <TableRow className="hover:bg-muted/50">
                 {isExpandable && (
                   <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => toggleExpand(booking.id)} className="h-8 w-8">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => toggleExpand(booking.id)} 
+                      className="h-8 w-8"
+                    >
                       {expandedBooking === booking.id ? (
                         <ChevronDown className="h-4 w-4" />
                       ) : (
@@ -110,7 +148,12 @@ export default function BookingTable({ bookings, isLoading, isExpandable = false
                 <TableCell>{getStatusBadge(booking.bookingStatus)}</TableCell>
                 <TableCell className="text-right">${booking.totalAmount.toLocaleString()}</TableCell>
                 <TableCell>
-                  <Button variant="ghost" size="icon" onClick={() => handleViewBooking(booking)} className="h-8 w-8">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => handleViewBooking(booking)} 
+                    className="h-8 w-8"
+                  >
                     <Eye className="h-4 w-4" />
                   </Button>
                 </TableCell>
@@ -132,7 +175,7 @@ export default function BookingTable({ bookings, isLoading, isExpandable = false
                         <p className="text-sm">Room: {booking.roomNumber || "Not assigned"}</p>
                         <p className="text-sm">Type: {booking.roomType}</p>
                         <p className="text-sm">
-                          Guests: {booking.numberOfGuests} {booking.numberOfGuests > 1 ? "people" : "person"}
+                          Guests: {booking.numberOfGuests || 1} {(booking.numberOfGuests || 1) > 1 ? "people" : "person"}
                         </p>
                       </div>
                       <div>
@@ -146,7 +189,7 @@ export default function BookingTable({ bookings, isLoading, isExpandable = false
                   </TableCell>
                 </TableRow>
               )}
-            </>
+            </React.Fragment>
           ))}
         </TableBody>
       </Table>
@@ -194,7 +237,7 @@ export default function BookingTable({ bookings, isLoading, isExpandable = false
                   </div>
                   <div>
                     <p className="text-sm font-medium">Number of Guests</p>
-                    <p>{selectedBooking.numberOfGuests}</p>
+                    <p>{selectedBooking.numberOfGuests || 1}</p>
                   </div>
                 </div>
               </div>
@@ -226,7 +269,7 @@ export default function BookingTable({ bookings, isLoading, isExpandable = false
                   </div>
                   <div>
                     <p className="text-sm font-medium">Special Requests</p>
-                    <p>{selectedBooking.specialRequests || "None"}</p>
+                    <p>{selectedBooking.guest.specialRequests || "None"}</p>
                   </div>
                 </div>
               </div>
@@ -237,4 +280,3 @@ export default function BookingTable({ bookings, isLoading, isExpandable = false
     </>
   )
 }
-

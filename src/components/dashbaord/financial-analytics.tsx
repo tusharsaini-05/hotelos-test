@@ -15,14 +15,24 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  AreaChart,
-  Area,
 } from "recharts"
 
-type FinancialAnalyticsProps = {
-  data: any[]
+interface ChartDataItem {
+  name: string
+  value: number
+}
+
+interface TrendDataItem {
+  date: string
+  revenue: number
+}
+
+type ChartData = ChartDataItem[] | TrendDataItem[] | any[]
+
+interface FinancialAnalyticsProps {
+  data: ChartData
   isLoading: boolean
-  chartType?: "line" | "bar" | "pie" | "area"
+  chartType?: "line" | "bar" | "pie"
 }
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d"]
@@ -32,12 +42,21 @@ export default function FinancialAnalytics({ data, isLoading, chartType = "line"
     return <Skeleton className="w-full h-full" />
   }
 
+  // Check for empty data
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full w-full">
+        <p className="text-muted-foreground">No financial data available for the selected period</p>
+      </div>
+    )
+  }
+
   if (chartType === "pie") {
     return (
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
-            data={data}
+            data={data as ChartDataItem[]}
             cx="50%"
             cy="50%"
             labelLine={true}
@@ -46,11 +65,11 @@ export default function FinancialAnalytics({ data, isLoading, chartType = "line"
             dataKey="value"
             label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
           >
-            {data.map((entry, index) => (
+            {(data as ChartDataItem[]).map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, "Revenue"]} />
+          <Tooltip formatter={(value) => [`$${Number(value).toLocaleString()}`, "Revenue"]} />
           <Legend />
         </PieChart>
       </ResponsiveContainer>
@@ -61,7 +80,7 @@ export default function FinancialAnalytics({ data, isLoading, chartType = "line"
     return (
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
-          data={data}
+          data={data as ChartDataItem[]}
           margin={{
             top: 5,
             right: 30,
@@ -72,41 +91,19 @@ export default function FinancialAnalytics({ data, isLoading, chartType = "line"
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="name" />
           <YAxis />
-          <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, "Revenue"]} />
+          <Tooltip formatter={(value) => [`$${Number(value).toLocaleString()}`, "Revenue"]} />
           <Legend />
-          <Bar dataKey="value" fill="#8884d8" name="Revenue" />
+          <Bar dataKey="value" fill="#82ca9d" name="Revenue" />
         </BarChart>
       </ResponsiveContainer>
     )
   }
 
-  if (chartType === "area") {
-    return (
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart
-          data={data}
-          margin={{
-            top: 10,
-            right: 30,
-            left: 0,
-            bottom: 0,
-          }}
-        >
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="date" />
-          <YAxis />
-          <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, "Revenue"]} />
-          <Legend />
-          <Area type="monotone" dataKey="revenue" stroke="#8884d8" fill="#8884d8" />
-        </AreaChart>
-      </ResponsiveContainer>
-    )
-  }
-
+  // Default is line chart for revenue trends
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart
-        data={data}
+        data={data as TrendDataItem[]}
         margin={{
           top: 5,
           right: 30,
@@ -117,12 +114,16 @@ export default function FinancialAnalytics({ data, isLoading, chartType = "line"
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="date" />
         <YAxis />
-        <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, "Revenue"]} />
+        <Tooltip formatter={(value) => [`$${Number(value).toLocaleString()}`, "Revenue"]} />
         <Legend />
-        <Line type="monotone" dataKey="revenue" stroke="#8884d8" activeDot={{ r: 8 }} />
-        <Line type="monotone" dataKey="profit" stroke="#82ca9d" />
+        <Line 
+          type="monotone" 
+          dataKey="revenue" 
+          stroke="#82ca9d" 
+          activeDot={{ r: 8 }} 
+          name="Revenue" 
+        />
       </LineChart>
     </ResponsiveContainer>
   )
 }
-

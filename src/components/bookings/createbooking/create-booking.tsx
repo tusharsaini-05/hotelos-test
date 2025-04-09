@@ -1,6 +1,6 @@
 "use client"
 
-import { useState , useEffect } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PlusCircle } from "lucide-react"
@@ -9,23 +9,41 @@ import BookingForm from "./booking-form"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useHotelContext } from "@/providers/hotel-provider"
 
-// Mock hotel data
-const hotelData = {
-  id: "67a473107f94fb7765b95957",
-  name: "Grand Hotel",
-  floors: 4,
-  roomsPerFloor: 5,
+type Room = {
+  id: string
+  roomNumber: string
+  roomType: string
+  bedType: string
+  pricePerNight: number
+  status: string
+  amenities: string[]
+  images: string[]
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  maintenanceNotes: string
+  extraBedAllowed: boolean
+  lastMaintained: string
+  extraBedPrice: number
+  baseOccupancy: number
+  maxOccupancy: number
+  lastCleaned: string
+  floor: number
+  hotelId: string
+  roomSize: number
+  bedCount: number
+  isAvailable?: boolean
 }
 
 export default function CreateBooking() {
   const [isFormOpen, setIsFormOpen] = useState(false)
-  const [selectedRoom, setSelectedRoom] = useState<any>(null)
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
   const { selectedHotel } = useHotelContext();
+  
   const [hotelData, setHotelData] = useState({
     id: "",
     name: "",
-    floor : 0,
-    roomCount : 0
+    floorCount: 0,
   });
 
   // Update hotelData when selectedHotel changes
@@ -34,14 +52,12 @@ export default function CreateBooking() {
       setHotelData({
         id: selectedHotel?.id,
         name: selectedHotel?.name,
-        floor : selectedHotel?.floorCount,
-        roomCount : selectedHotel?.roomCount
+        floorCount: selectedHotel?.floorCount,
       });
     }
   }, [selectedHotel]);
 
-
-  const handleCreateBooking = (room: any) => {
+  const handleCreateBooking = (room: Room) => {
     setSelectedRoom(room)
     setIsFormOpen(true)
   }
@@ -53,10 +69,6 @@ export default function CreateBooking() {
           <h1 className="text-3xl font-bold tracking-tight">Booking Management</h1>
           <p className="text-muted-foreground mt-1">Manage room bookings and availability</p>
         </div>
-        <Button className="gap-1" onClick={() => setIsFormOpen(true)}>
-          <PlusCircle className="h-4 w-4" />
-          <span>New Booking</span>
-        </Button>
       </div>
 
       <Card className="mb-8">
@@ -75,16 +87,29 @@ export default function CreateBooking() {
                 <div className="w-4 h-4 rounded-sm bg-red-500"></div>
                 <span className="text-sm">Booked</span>
               </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-sm bg-red-600"></div>
+                <span className="text-sm">Occupied</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-sm bg-amber-500"></div>
+                <span className="text-sm">Cleaning</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-sm bg-blue-500"></div>
+                <span className="text-sm">Maintenance</span>
+              </div>
             </div>
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          <RoomGrid
-            hotelId={hotelData.id}
-            floors={hotelData.floor}
-            roomsPerFloor={hotelData.roomCount}
-            onCreateBooking={handleCreateBooking}
-          />
+          {hotelData.id && (
+            <RoomGrid
+              hotelId={hotelData.id}
+              floorCount={hotelData.floorCount}
+              onCreateBooking={handleCreateBooking}
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -101,6 +126,7 @@ export default function CreateBooking() {
             hotelName={hotelData.name}
             roomId={selectedRoom?.id}
             roomNumber={selectedRoom?.roomNumber}
+            room={selectedRoom}
             onSuccess={() => setIsFormOpen(false)}
           />
         </DialogContent>
@@ -108,4 +134,3 @@ export default function CreateBooking() {
     </div>
   )
 }
-

@@ -17,8 +17,21 @@ import {
   ResponsiveContainer,
 } from "recharts"
 
-type BookingTrendsProps = {
-  data: any[]
+interface ChartDataItem {
+  name: string
+  value: number
+}
+
+interface TrendDataItem {
+  date: string
+  bookings?: number
+  revenue?: number
+}
+
+type ChartData = ChartDataItem[] | TrendDataItem[]
+
+interface BookingTrendsProps {
+  data: ChartData
   isLoading: boolean
   chartType?: "line" | "bar" | "pie"
 }
@@ -30,12 +43,21 @@ export default function BookingTrends({ data, isLoading, chartType = "line" }: B
     return <Skeleton className="w-full h-full" />
   }
 
+  // Check for empty data
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full w-full">
+        <p className="text-muted-foreground">No booking data available for the selected period</p>
+      </div>
+    )
+  }
+
   if (chartType === "pie") {
     return (
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
-            data={data}
+            data={data as ChartDataItem[]}
             cx="50%"
             cy="50%"
             labelLine={true}
@@ -44,7 +66,7 @@ export default function BookingTrends({ data, isLoading, chartType = "line" }: B
             dataKey="value"
             label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
           >
-            {data.map((entry, index) => (
+            {(data as ChartDataItem[]).map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
@@ -59,7 +81,7 @@ export default function BookingTrends({ data, isLoading, chartType = "line" }: B
     return (
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
-          data={data}
+          data={data as ChartDataItem[]}
           margin={{
             top: 5,
             right: 30,
@@ -78,10 +100,11 @@ export default function BookingTrends({ data, isLoading, chartType = "line" }: B
     )
   }
 
+  // Default is line chart for booking trends
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart
-        data={data}
+        data={data as TrendDataItem[]}
         margin={{
           top: 5,
           right: 30,
@@ -91,13 +114,29 @@ export default function BookingTrends({ data, isLoading, chartType = "line" }: B
       >
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="date" />
-        <YAxis />
-        <Tooltip />
+        <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
+        <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
+        <Tooltip formatter={(value, name) => {
+          if (name === "bookings") return [`${value}`, "Bookings"];
+          return [`$${Number(value).toLocaleString()}`, "Revenue"];
+        }} />
         <Legend />
-        <Line type="monotone" dataKey="bookings" stroke="#8884d8" activeDot={{ r: 8 }} />
-        <Line type="monotone" dataKey="revenue" stroke="#82ca9d" />
+        <Line 
+          yAxisId="left" 
+          type="monotone" 
+          dataKey="bookings" 
+          stroke="#8884d8" 
+          activeDot={{ r: 8 }} 
+          name="Bookings" 
+        />
+        <Line 
+          yAxisId="right" 
+          type="monotone" 
+          dataKey="revenue" 
+          stroke="#82ca9d" 
+          name="Revenue ($)" 
+        />
       </LineChart>
     </ResponsiveContainer>
   )
 }
-

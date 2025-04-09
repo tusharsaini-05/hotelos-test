@@ -14,21 +14,24 @@ import {
   Settings,
   Activity,
   FileText,
+  LucideLayoutDashboard,
 } from "lucide-react"
 import { useLayout } from "@/providers/layout-providers"
+interface MenuItem {
+  name: string
+  icon: React.ComponentType<{ className?: string }>
+  href: string
+}
 
-const menuItems = [
-  { name: "Orders", icon: ClipboardList, href: "/orders" },
-  { name: "Customers", icon: Users, href: "/customers" },
-  { name: "Rooms", icon: BedDouble, href: "/rooms" },
-  { name: "Guest Reviews", icon: MessageSquare, href: "/reviews" },
-  { name: "Trends", icon: TrendingUp, href: "/trends" },
+const menuItems: MenuItem[] = [
+  { name: "Dashboard", icon: LucideLayoutDashboard, href: "/Dashboard" },
+  { name: "Analytics", icon: Users, href: "/booking/analytics" },
+  { name: "Check-Booking", icon: BedDouble, href: "/booking/checkbooking" },
+  { name: "Create-Booking", icon: MessageSquare, href: "/booking/createbooking" },
+  { name: "Hotel-Setup", icon: TrendingUp, href: "/hotels/settingsS" },
   { name: "Calendar", icon: Calendar, href: "/calendar" },
-  { name: "House Keeping", icon: ClipboardList, href: "/housekeeping" },
+  { name: "Room-Setup", icon: ClipboardList, href: "/room/manage" },
   { name: "Settings", icon: Settings, href: "/settings" },
-  { name: "Reports", icon: FileText, href: "/reports" },
-  { name: "My Staff", icon: UserCog, href: "/staff" },
-  { name: "Activity Logs", icon: Activity, href: "/activity" },
 ]
 
 export function DashboardSidebar() {
@@ -67,7 +70,7 @@ export function DashboardSidebar() {
           {isSidebarOpen ? "Hotel OS" : "HO"}
         </motion.div>
       </div>
-      <div className="px-3 py-4">
+      <div className="px-3 py-4 my-3 ">
         {menuItems.map((item) => (
           <Link key={item.name} href={item.href}>
             <motion.div

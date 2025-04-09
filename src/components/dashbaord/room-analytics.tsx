@@ -18,8 +18,29 @@ import {
   Treemap,
 } from "recharts"
 
-type RoomAnalyticsProps = {
-  data: any[]
+// Define all the interfaces for the component
+interface ChartDataItem {
+  name: string
+  value: number
+}
+
+interface OccupancyDataItem {
+  date: string
+  occupancy: number
+}
+
+interface TrendDataItem {
+  date: string
+  bookings?: number
+  revenue?: number
+  occupancy?: number
+}
+
+// Union type for all possible chart data formats
+type ChartData = ChartDataItem[] | OccupancyDataItem[] | TrendDataItem[] | any[]
+
+interface RoomAnalyticsProps {
+  data: ChartData
   isLoading: boolean
   chartType?: "line" | "bar" | "pie" | "heatmap"
 }
@@ -31,12 +52,21 @@ export default function RoomAnalytics({ data, isLoading, chartType = "bar" }: Ro
     return <Skeleton className="w-full h-full" />
   }
 
+  // Check for empty data
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full w-full">
+        <p className="text-muted-foreground">No data available</p>
+      </div>
+    )
+  }
+
   if (chartType === "pie") {
     return (
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
-            data={data}
+            data={data as ChartDataItem[]}
             cx="50%"
             cy="50%"
             labelLine={true}
@@ -45,7 +75,7 @@ export default function RoomAnalytics({ data, isLoading, chartType = "bar" }: Ro
             dataKey="value"
             label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
           >
-            {data.map((entry, index) => (
+            {(data as ChartDataItem[]).map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
@@ -60,7 +90,7 @@ export default function RoomAnalytics({ data, isLoading, chartType = "bar" }: Ro
     return (
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
-          data={data}
+          data={data as ChartDataItem[]}
           margin={{
             top: 5,
             right: 30,
@@ -82,17 +112,25 @@ export default function RoomAnalytics({ data, isLoading, chartType = "bar" }: Ro
   if (chartType === "heatmap") {
     return (
       <ResponsiveContainer width="100%" height="100%">
-        <Treemap data={data} dataKey="value" aspectRatio={4 / 3} stroke="#fff" fill="#8884d8" nameKey="name">
+        <Treemap 
+          data={data as ChartDataItem[]} 
+          dataKey="value" 
+          aspectRatio={4 / 3} 
+          stroke="#fff" 
+          fill="#8884d8" 
+          nameKey="name"
+        >
           <Tooltip formatter={(value) => [`${value}%`, "Occupancy"]} />
         </Treemap>
       </ResponsiveContainer>
     )
   }
 
+  // Line chart for occupancy timeline
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart
-        data={data}
+        data={data as OccupancyDataItem[] | TrendDataItem[]}
         margin={{
           top: 5,
           right: 30,
@@ -103,11 +141,16 @@ export default function RoomAnalytics({ data, isLoading, chartType = "bar" }: Ro
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="date" />
         <YAxis />
-        <Tooltip />
+        <Tooltip formatter={(value) => [`${value}%`, "Occupancy"]} />
         <Legend />
-        <Line type="monotone" dataKey="occupancy" stroke="#8884d8" activeDot={{ r: 8 }} />
+        <Line 
+          type="monotone" 
+          dataKey="occupancy" 
+          stroke="#8884d8" 
+          activeDot={{ r: 8 }} 
+          name="Occupancy Rate" 
+        />
       </LineChart>
     </ResponsiveContainer>
   )
 }
-

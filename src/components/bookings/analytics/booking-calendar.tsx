@@ -1,16 +1,25 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { format, isSameDay, parseISO } from "date-fns"
 import { ChevronDown } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Booking, OccupancyData } from "./booking-analytics"
 
-type BookingCalendarProps = {
-  bookings: any[]
-  occupancyData: any[]
-  currentDate: Date
-  isLoading: boolean
-  onBookingClick: (booking: any) => void
+interface RoomWithBookings {
+  roomNumber: string;
+  roomId?: string;
+  floor: number;
+  type: string;
+  bookings: Booking[];
+}
+
+interface BookingCalendarProps {
+  bookings: Booking[];
+  occupancyData: OccupancyData[];
+  currentDate: Date;
+  isLoading: boolean;
+  onBookingClick: (booking: Booking) => void;
 }
 
 export default function BookingCalendar({
@@ -23,17 +32,18 @@ export default function BookingCalendar({
   const [expandedRoomTypes, setExpandedRoomTypes] = useState<string[]>([])
 
   // Group rooms by type
-  const roomsByType: Record<string, any[]> = bookings.reduce((acc, booking) => {
+  const roomsByType: Record<string, RoomWithBookings[]> = bookings.reduce((acc, booking) => {
     const roomType = booking.roomType || "Unknown"
     if (!acc[roomType]) {
       acc[roomType] = []
     }
 
     // Check if room is already in the array
-    const existingRoom = acc[roomType].find((r : any) => r.roomNumber === booking.roomNumber)
+    const existingRoom = acc[roomType].find((r) => r.roomNumber === booking.roomNumber)
     if (!existingRoom) {
       acc[roomType].push({
         roomNumber: booking.roomNumber,
+        roomId: booking.roomId,
         floor: booking.floor,
         type: roomType,
         bookings: [booking],
@@ -43,7 +53,7 @@ export default function BookingCalendar({
     }
 
     return acc
-  }, {})
+  }, {} as Record<string, RoomWithBookings[]>)
 
   // Sort rooms by number within each type
   Object.keys(roomsByType).forEach((type) => {
@@ -56,8 +66,8 @@ export default function BookingCalendar({
     )
   }
 
-  // Get days for the header
-  const days = occupancyData.slice(0, 7) // Just show a week for this example
+  // Get days for the calendar view
+  const days = occupancyData
 
   if (isLoading) {
     return (
@@ -71,6 +81,15 @@ export default function BookingCalendar({
             </div>
           ))}
         </div>
+      </div>
+    )
+  }
+
+  // Handle the case with no bookings
+  if (Object.keys(roomsByType).length === 0) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-lg text-muted-foreground">No bookings found for the selected period and filters.</p>
       </div>
     )
   }
@@ -93,9 +112,12 @@ export default function BookingCalendar({
         </thead>
         <tbody>
           {Object.entries(roomsByType).map(([roomType, rooms]) => (
-            <>
-              <tr key={roomType} className="border-b hover:bg-muted/30 cursor-pointer">
-                <td className="p-3 font-medium flex items-center gap-1" onClick={() => toggleRoomType(roomType)}>
+            <React.Fragment key={roomType}>
+              <tr className="border-b hover:bg-muted/30 cursor-pointer">
+                <td 
+                  className="p-3 font-medium flex items-center gap-1" 
+                  onClick={() => toggleRoomType(roomType)}
+                >
                   <ChevronDown
                     className={`h-4 w-4 transition-transform ${
                       expandedRoomTypes.includes(roomType) ? "rotate-0" : "-rotate-90"
@@ -106,10 +128,15 @@ export default function BookingCalendar({
                 {days.map((day, dayIndex) => {
                   const roomsOfType = rooms.length
                   const bookedRooms = rooms.filter((room) =>
-                    room.bookings.some((booking: any) => {
-                      const checkIn = parseISO(booking.checkInDate)
-                      const checkOut = parseISO(booking.checkOutDate)
-                      return day.date >= checkIn && day.date <= checkOut
+                    room.bookings.some((booking) => {
+                      try {
+                        const checkIn = parseISO(booking.checkInDate)
+                        const checkOut = parseISO(booking.checkOutDate)
+                        return day.date >= checkIn && day.date <= checkOut
+                      } catch (e) {
+                        console.error("Date parsing error:", e)
+                        return false
+                      }
                     }),
                   ).length
 
@@ -135,51 +162,75 @@ export default function BookingCalendar({
               {expandedRoomTypes.includes(roomType) &&
                 rooms.map((room) => (
                   <tr key={`${roomType}-${room.roomNumber}`} className="border-b hover:bg-muted/20">
-                    <td className="p-3 pl-8 text-sm">{room.roomNumber}</td>
+                    <td className="p-3 pl-8 text-sm">
+                      {room.roomNumber} 
+                      <span className="text-xs text-muted-foreground ml-2">
+                        (Floor {room.floor})
+                      </span>
+                    </td>
+                    
                     {days.map((day, dayIndex) => {
-                      const bookingsForDay = room.bookings.filter((booking: any) => {
-                        const checkIn = parseISO(booking.checkInDate)
-                        const checkOut = parseISO(booking.checkOutDate)
-                        return day.date >= checkIn && day.date <= checkOut
+                      const bookingsForDay = room.bookings.filter((booking) => {
+                        try {
+                          const checkIn = parseISO(booking.checkInDate)
+                          const checkOut = parseISO(booking.checkOutDate)
+                          return day.date >= checkIn && day.date <= checkOut
+                        } catch (e) {
+                          console.error("Date parsing error:", e)
+                          return false
+                        }
                       })
 
                       return (
                         <td key={dayIndex} className="p-0 relative h-12">
-                          {bookingsForDay.map((booking: any, i: number) => {
-                            const isCheckIn = isSameDay(parseISO(booking.checkInDate), day.date)
-                            const isCheckOut = isSameDay(parseISO(booking.checkOutDate), day.date)
+                          {bookingsForDay.length === 0 ? (
+                            <div className="h-full flex items-center justify-center text-xs text-gray-400">
+                              Available
+                            </div>
+                          ) : (
+                            bookingsForDay.map((booking, i) => {
+                              try {
+                                const isCheckIn = isSameDay(parseISO(booking.checkInDate), day.date)
+                                const isCheckOut = isSameDay(parseISO(booking.checkOutDate), day.date)
 
-                            // Determine the color based on booking status
-                            let bgColor = "bg-green-200"
-                            if (booking.bookingStatus === "CONFIRMED") bgColor = "bg-green-200"
-                            if (booking.bookingStatus === "CHECKED_IN") bgColor = "bg-blue-200"
-                            if (booking.bookingStatus === "PENDING") bgColor = "bg-amber-200"
+                                // Determine the color based on booking status
+                                let bgColor = "bg-green-200"
+                                if (booking.bookingStatus === "CONFIRMED") bgColor = "bg-green-200"
+                                if (booking.bookingStatus === "CHECKED_IN") bgColor = "bg-blue-200"
+                                if (booking.bookingStatus === "PENDING") bgColor = "bg-amber-200"
+                                if (booking.bookingStatus === "CANCELLED") bgColor = "bg-red-200"
+                                if (booking.bookingStatus === "CHECKED_OUT") bgColor = "bg-gray-200"
 
-                            return (
-                              <div
-                                key={i}
-                                className={`
-                                ${bgColor} p-1 text-xs cursor-pointer
-                                ${isCheckIn ? "rounded-l-md border-l-4 border-l-green-600" : ""}
-                                ${isCheckOut ? "rounded-r-md border-r-4 border-r-green-600" : ""}
-                                h-full flex items-center justify-center
-                              `}
-                                onClick={() => onBookingClick(booking)}
-                              >
-                                {booking.guest.firstName} {booking.guest.lastName}
-                              </div>
-                            )
-                          })}
+                                return (
+                                  <div
+                                    key={`booking-${booking.id || i}`}
+                                    className={`
+                                    ${bgColor} p-1 text-xs cursor-pointer
+                                    ${isCheckIn ? "rounded-l-md border-l-4 border-l-green-600" : ""}
+                                    ${isCheckOut ? "rounded-r-md border-r-4 border-r-green-600" : ""}
+                                    h-full flex items-center justify-center
+                                  `}
+                                    onClick={() => onBookingClick(booking)}
+                                    title={`${booking.guest.firstName} ${booking.guest.lastName} - ${booking.bookingStatus}`}
+                                  >
+                                    {booking.guest.firstName} {booking.guest.lastName}
+                                  </div>
+                                )
+                              } catch (e) {
+                                console.error("Error rendering booking:", e)
+                                return null
+                              }
+                            })
+                          )}
                         </td>
                       )
                     })}
                   </tr>
                 ))}
-            </>
+            </React.Fragment>
           ))}
         </tbody>
       </table>
     </div>
   )
 }
-
