@@ -28,7 +28,7 @@ const HotelManager = () => {
     }
   };
 
-  const handleDeleteHotel = async (id:String) => {
+  const handleDeleteHotel = async (id:string) => {
     try {
       await deleteHotel({ variables: { id } });
       alert("Hotel Deleted Successfully!");
@@ -37,7 +37,7 @@ const HotelManager = () => {
     }
   };
 
-  const handleUpdateHotel = async (id:String, updateData:{id: String,
+  const handleUpdateHotel = async (id:string, updateData:{id: string,
     hotelData: HotelUpdateInput
     }) => {
     try {

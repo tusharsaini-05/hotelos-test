@@ -48,7 +48,7 @@ export default function GuestAnalytics({ data, isLoading, chartType = "bar" }: G
               <TableCell className="font-medium">{guest.name}</TableCell>
               <TableCell>{guest.email}</TableCell>
               <TableCell>{guest.bookings}</TableCell>
-              <TableCell className="text-right">${guest.spent.toLocaleString()}</TableCell>
+              <TableCell className="text-right">${guest.totalSpent.toLocaleString()}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -145,4 +145,3 @@ export default function GuestAnalytics({ data, isLoading, chartType = "bar" }: G
     </ResponsiveContainer>
   )
 }
-

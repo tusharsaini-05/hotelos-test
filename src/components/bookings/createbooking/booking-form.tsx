@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
@@ -86,7 +86,6 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, ro
   const [error, setError] = useState<string | null>(null)
 
   const today = new Date()
-  const tomorrow = addDays(today, 1)
   const checkoutDefault = addDays(today, 1)
 
   // Initialize form with default values

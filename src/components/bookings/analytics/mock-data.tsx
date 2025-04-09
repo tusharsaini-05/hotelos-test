@@ -4,7 +4,6 @@ import { Booking, Room } from "./booking-analytics"
 // Generate random booking data for demonstration
 export const generateMockBookings = (currentDate: Date): Partial<Booking>[] => {
   const bookings: Partial<Booking>[] = []
-  const roomTypes = ["Standard Double", "Superior Double", "Deluxe Suite", "Executive Suite"]
   const statuses = ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED", "PENDING"]
   const firstNames = ["Thomas", "Julia", "Philippe", "Raven", "Benjamin", "Nishan", "Frédéric", "Chayangkul", "Ahmed"]
   const lastNames = ["Scott", "Schenk", "Le Calvez", "Valenzuela", "Kammoun", "Wang", "Fardey", "Majoon", "Ali"]

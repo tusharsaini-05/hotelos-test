@@ -48,7 +48,7 @@ type HotelAmenitiesFormProps = {
   onSuccess: () => void
 }
 
-export default function HotelAmenitiesForm({ onSuccess }: HotelAmenitiesFormProps) {
+export default function HotelAmenitiesForm({ onSuccess }: HotelAmenitiesFormProps ) {
   // Get the selected hotel from context
   const { selectedHotel, fetchUserHotels } = useHotelContext()
   

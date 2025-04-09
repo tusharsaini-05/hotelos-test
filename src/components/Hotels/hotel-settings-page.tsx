@@ -173,7 +173,7 @@ export default function HotelSettingsPage() {
             </TabsContent>
 
             <TabsContent value="amenities">
-              <HotelAmenitiesForm hotel={hotelData} onSuccess={handleUpdateSuccess} />
+              <HotelAmenitiesForm onSuccess={handleUpdateSuccess} />
             </TabsContent>
 
             <TabsContent value="images">

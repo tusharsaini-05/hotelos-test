@@ -222,376 +222,216 @@ export default function HotelDashboard() {
   // GraphQL endpoint - adjust based on your environment
   const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT || 'http://localhost:8000/graphql'
 
-  useEffect(() => {
-    const fetchDashboardData = async (): Promise<void> => {
-      if (!selectedHotel?.id || !adminId) return
-      if (!dateRange.from || !dateRange.to) return
+  // Extract fetchDashboardData as a reusable function outside useEffect
+  const fetchDashboardData = async (forceRefresh = false): Promise<void> => {
+    if (!selectedHotel?.id || !adminId) return
+    if (!dateRange.from || !dateRange.to) return
+    
+    setIsLoading(true)
+    try {
+      // Add cache-busting parameter when forceRefresh is true
+      const cacheBuster = forceRefresh ? `?refresh=${Date.now()}` : ''
+      const fetchEndpoint = `${endpoint}${cacheBuster}`
       
-      setIsLoading(true)
-      try {
-        // Fetch hotel details
-        const hotelResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-          },
-          body: JSON.stringify({
-            query: `
-              query GetHotelDetails($adminId: String!) {
-                hotel {
-                  getHotels(adminId: $adminId) {
-                    id
-                    name
-                    description
-                    status
-                    amenities
-                    policies {
-                      checkInTime
-                      checkOutTime
-                      petPolicy
-                    }
-                    images
-                    createdAt
-                    updatedAt
-                    address
-                    state
-                    contactPhone
-                    contactEmail
-                    starRating
-                    floorCount
-                    roomCount
-                    city
-                    country
-                    website
-                    description
-                  }
-                }
-              }
-            `,
-            variables: { adminId }
-          }),
-        })
-        
-        const hotelResult: GraphQLResponse<HotelResponse> = await hotelResponse.json()
-        
-        if (hotelResult.errors) {
-          throw new Error(hotelResult.errors[0].message || "Failed to fetch hotels")
-        }
-        
-        // Fetch rooms data
-        const roomsResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-          },
-          body: JSON.stringify({
-            query: `
-              query GetRooms($hotelId: String!) {
-                rooms(hotelId: $hotelId) {
+      // Fetch hotel details
+      const hotelResponse = await fetch(fetchEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`,
+          // Add cache control headers for refresh
+          ...(forceRefresh ? {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          } : {})
+        },
+        body: JSON.stringify({
+          query: `
+            query GetHotelDetails($adminId: String!) {
+              hotel {
+                getHotels(adminId: $adminId) {
                   id
-                  roomNumber
-                  roomType
-                  bedType
-                  pricePerNight
+                  name
+                  description
                   status
                   amenities
+                  policies {
+                    checkInTime
+                    checkOutTime
+                    petPolicy
+                  }
                   images
-                  isActive
                   createdAt
                   updatedAt
-                  maxOccupancy
-                  baseOccupancy
-                  extraBedPrice
-                  extraBedAllowed
-                  maintenanceNotes
-                  lastCleaned
-                  bedCount
-                  pricePerNight
+                  address
+                  state
+                  contactPhone
+                  contactEmail
+                  starRating
+                  floorCount
+                  roomCount
+                  city
+                  country
+                  website
                   description
-                  isSmoking
-                  floor
                 }
               }
-            `,
-            variables: { hotelId: selectedHotel.id }
-          }),
-        })
-        
-        const roomsResult: GraphQLResponse<RoomsResponse> = await roomsResponse.json()
-        
-        if (roomsResult.errors) {
-          throw new Error(roomsResult.errors[0].message || "Failed to fetch rooms")
-        }
-        
-        // Fetch bookings data
-        const bookingsResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-          },
-          body: JSON.stringify({
-            query: `
-              query GetBookings($hotelId: String!) {
-                bookings(hotelId: $hotelId) {
-                  id
-                  roomId
-                  bookingNumber
-                  guest {
-                    firstName
-                    lastName
-                    email
-                    address
-                    specialRequests
-                  }
-                  bookingSource
-                  checkInDate
-                  checkOutDate
-                  roomType
-                  bookingStatus
-                  paymentStatus
-                  totalAmount
-                  numberOfRooms
-                  numberOfGuests
-                  ratePlan
-                  baseAmount
-                  taxAmount
-                  paymentStatus
-                  payments {
-                    amount
-                    status
-                    transactionId
-                    transactionDate
-                  }
-                  roomCharges {
-                    amount
-                    chargeDate
-                    notes
-                    description
-                  }
-                  cancellationDate
-                  checkInTime
-                  createdAt
-                  updatedBy
-                  updatedAt
-                }
-              }
-            `,
-            variables: { hotelId: selectedHotel.id }
-          }),
-        })
-        
-        const bookingsResult: GraphQLResponse<BookingsResponse> = await bookingsResponse.json()
-        
-        if (bookingsResult.errors) {
-          throw new Error(bookingsResult.errors[0].message || "Failed to fetch bookings")
-        }
-        
-        // Process the data to match our dashboard structure
-        const processedData = processGraphQLData(
-          hotelResult.data!, 
-          roomsResult.data!, 
-          bookingsResult.data!, 
-          dateRange
-        )
-        
-        setDashboardData(processedData)
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error)
-      } finally {
-        setIsLoading(false)
+            }
+          `,
+          variables: { adminId }
+        }),
+      })
+      
+      const hotelResult: GraphQLResponse<HotelResponse> = await hotelResponse.json()
+      
+      if (hotelResult.errors) {
+        throw new Error(hotelResult.errors[0].message || "Failed to fetch hotels")
       }
+      
+      // Fetch rooms data
+      const roomsResponse = await fetch(fetchEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`,
+          ...(forceRefresh ? {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          } : {})
+        },
+        body: JSON.stringify({
+          query: `
+            query GetRooms($hotelId: String!) {
+              rooms(hotelId: $hotelId) {
+                id
+                roomNumber
+                roomType
+                bedType
+                pricePerNight
+                status
+                amenities
+                images
+                isActive
+                createdAt
+                updatedAt
+                maxOccupancy
+                baseOccupancy
+                extraBedPrice
+                extraBedAllowed
+                maintenanceNotes
+                lastCleaned
+                bedCount
+                pricePerNight
+                description
+                isSmoking
+                floor
+              }
+            }
+          `,
+          variables: { hotelId: selectedHotel.id }
+        }),
+      })
+      
+      const roomsResult: GraphQLResponse<RoomsResponse> = await roomsResponse.json()
+      
+      if (roomsResult.errors) {
+        throw new Error(roomsResult.errors[0].message || "Failed to fetch rooms")
+      }
+      
+      // Fetch bookings data
+      const bookingsResponse = await fetch(fetchEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`,
+          ...(forceRefresh ? {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          } : {})
+        },
+        body: JSON.stringify({
+          query: `
+            query GetBookings($hotelId: String!) {
+              bookings(hotelId: $hotelId) {
+                id
+                roomId
+                bookingNumber
+                guest {
+                  firstName
+                  lastName
+                  email
+                  address
+                  specialRequests
+                }
+                bookingSource
+                checkInDate
+                checkOutDate
+                roomType
+                bookingStatus
+                paymentStatus
+                totalAmount
+                numberOfRooms
+                numberOfGuests
+                ratePlan
+                baseAmount
+                taxAmount
+                paymentStatus
+                payments {
+                  amount
+                  status
+                  transactionId
+                  transactionDate
+                }
+                roomCharges {
+                  amount
+                  chargeDate
+                  notes
+                  description
+                }
+                cancellationDate
+                checkInTime
+                createdAt
+                updatedBy
+                updatedAt
+              }
+            }
+          `,
+          variables: { hotelId: selectedHotel.id }
+        }),
+      })
+      
+      const bookingsResult: GraphQLResponse<BookingsResponse> = await bookingsResponse.json()
+      
+      if (bookingsResult.errors) {
+        throw new Error(bookingsResult.errors[0].message || "Failed to fetch bookings")
+      }
+      
+      // Process the data to match our dashboard structure
+      const processedData = processGraphQLData(
+        hotelResult.data!, 
+        roomsResult.data!, 
+        bookingsResult.data!, 
+        dateRange
+      )
+      
+      setDashboardData(processedData)
+    } catch (error) {
+      console.error(`Error ${forceRefresh ? 'refreshing' : 'fetching'} dashboard data:`, error)
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchDashboardData()
   }, [selectedHotel?.id, adminId, dateRange, endpoint, session])
 
+  // Updated handleRefresh function uses the fetchDashboardData function with a force refresh parameter
   const handleRefresh = (): void => {
-    const fetchDashboardData = async (): Promise<void> => {
-      if (!selectedHotel?.id || !adminId) return
-      if (!dateRange.from || !dateRange.to) return
-      
-      setIsLoading(true)
-      try {
-        // Fetch hotel details
-        const hotelResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-          },
-          body: JSON.stringify({
-            query: `
-              query GetHotelDetails($adminId: String!) {
-                hotel {
-                  getHotels(adminId: $adminId) {
-                    id
-                    name
-                    description
-                    status
-                    amenities
-                    policies {
-                      checkInTime
-                      checkOutTime
-                      petPolicy
-                    }
-                    images
-                    createdAt
-                    updatedAt
-                    address
-                    state
-                    contactPhone
-                    contactEmail
-                    starRating
-                    floorCount
-                    roomCount
-                    city
-                    country
-                    website
-                    description
-                  }
-                }
-              }
-            `,
-            variables: { adminId }
-          }),
-        })
-        
-        const hotelResult: GraphQLResponse<HotelResponse> = await hotelResponse.json()
-        
-        if (hotelResult.errors) {
-          throw new Error(hotelResult.errors[0].message || "Failed to fetch hotels")
-        }
-        
-        // Fetch rooms data
-        const roomsResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-          },
-          body: JSON.stringify({
-            query: `
-              query GetRooms($hotelId: String!) {
-                rooms(hotelId: $hotelId) {
-                  id
-                  roomNumber
-                  roomType
-                  bedType
-                  pricePerNight
-                  status
-                  amenities
-                  images
-                  isActive
-                  createdAt
-                  updatedAt
-                  maxOccupancy
-                  baseOccupancy
-                  extraBedPrice
-                  extraBedAllowed
-                  maintenanceNotes
-                  lastCleaned
-                  bedCount
-                  pricePerNight
-                  description
-                  isSmoking
-                  floor
-                }
-              }
-            `,
-            variables: { hotelId: selectedHotel.id }
-          }),
-        })
-        
-        const roomsResult: GraphQLResponse<RoomsResponse> = await roomsResponse.json()
-        
-        if (roomsResult.errors) {
-          throw new Error(roomsResult.errors[0].message || "Failed to fetch rooms")
-        }
-        
-        // Fetch bookings data
-        const bookingsResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-          },
-          body: JSON.stringify({
-            query: `
-              query GetBookings($hotelId: String!) {
-                bookings(hotelId: $hotelId) {
-                  id
-                  roomId
-                  bookingNumber
-                  guest {
-                    firstName
-                    lastName
-                    email
-                    address
-                    specialRequests
-                  }
-                  bookingSource
-                  checkInDate
-                  checkOutDate
-                  roomType
-                  bookingStatus
-                  paymentStatus
-                  totalAmount
-                  numberOfRooms
-                  numberOfGuests
-                  ratePlan
-                  baseAmount
-                  taxAmount
-                  paymentStatus
-                  payments {
-                    amount
-                    status
-                    transactionId
-                    transactionDate
-                  }
-                  roomCharges {
-                    amount
-                    chargeDate
-                    notes
-                    description
-                  }
-                  cancellationDate
-                  checkInTime
-                  createdAt
-                  updatedBy
-                  updatedAt
-                }
-              }
-            `,
-            variables: { hotelId: selectedHotel.id }
-          }),
-        })
-        
-        const bookingsResult: GraphQLResponse<BookingsResponse> = await bookingsResponse.json()
-        
-        if (bookingsResult.errors) {
-          throw new Error(bookingsResult.errors[0].message || "Failed to fetch bookings")
-        }
-        
-        // Process the data to match our dashboard structure
-        const processedData = processGraphQLData(
-          hotelResult.data!, 
-          roomsResult.data!, 
-          bookingsResult.data!, 
-          dateRange
-        )
-        
-        setDashboardData(processedData)
-      } catch (error) {
-        console.error("Error refreshing dashboard data:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchDashboardData()
+    fetchDashboardData(true) // Force refresh by setting parameter to true
   }
 
   const handleExportData = (): void => {
@@ -843,7 +683,7 @@ export default function HotelDashboard() {
     
     // Generate data for occupancy timeline
     const occupancyTimeline: TrendDataItem[] = []
-    let currentDate = new Date(dateRange.from)
+    const currentDate = new Date(dateRange.from)
     while (currentDate <= dateRange.to) {
       const dateStr = format(currentDate, 'yyyy-MM-dd')
       const dateBookings = filteredBookings.filter(b => {

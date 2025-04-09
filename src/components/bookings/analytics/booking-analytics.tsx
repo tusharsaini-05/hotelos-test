@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useContext } from "react"
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, addDays } from "date-fns"
+import { useState, useEffect } from "react"
+import { format, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns"
 import { ChevronLeft, ChevronRight, Calendar, Filter, RefreshCw, HelpCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -104,7 +104,6 @@ export interface OccupancyData {
 
 export default function BookingAnalytics() {
   const [currentDate, setCurrentDate] = useState<Date>(new Date())
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [rooms, setRooms] = useState<Room[]>([])
   const [roomDetails, setRoomDetails] = useState<Record<string, Room>>({})

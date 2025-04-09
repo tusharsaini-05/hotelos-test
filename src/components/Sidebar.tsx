@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import { usePathname } from "next/navigation"
 import {
   Users,
   BedDouble,
@@ -10,13 +11,11 @@ import {
   TrendingUp,
   Calendar,
   ClipboardList,
-  UserCog,
   Settings,
-  Activity,
-  FileText,
   LucideLayoutDashboard,
 } from "lucide-react"
 import { useLayout } from "@/providers/layout-providers"
+
 interface MenuItem {
   name: string
   icon: React.ComponentType<{ className?: string }>
@@ -24,11 +23,11 @@ interface MenuItem {
 }
 
 const menuItems: MenuItem[] = [
-  { name: "Dashboard", icon: LucideLayoutDashboard, href: "/Dashboard" },
+  { name: "Dashboard", icon: LucideLayoutDashboard, href: "/dashboard" },
   { name: "Analytics", icon: Users, href: "/booking/analytics" },
   { name: "Check-Booking", icon: BedDouble, href: "/booking/checkbooking" },
   { name: "Create-Booking", icon: MessageSquare, href: "/booking/createbooking" },
-  { name: "Hotel-Setup", icon: TrendingUp, href: "/hotels/settingsS" },
+  { name: "Hotel-Setup", icon: TrendingUp, href: "/hotels/settings" },
   { name: "Calendar", icon: Calendar, href: "/calendar" },
   { name: "Room-Setup", icon: ClipboardList, href: "/room/manage" },
   { name: "Settings", icon: Settings, href: "/settings" },
@@ -37,6 +36,7 @@ const menuItems: MenuItem[] = [
 export function DashboardSidebar() {
   const { isSidebarOpen, setIsSidebarOpen } = useLayout()
   const [isHovering, setIsHovering] = useState(false)
+  const pathname = usePathname()
 
   useEffect(() => {
     let timeout: NodeJS.Timeout
@@ -49,6 +49,10 @@ export function DashboardSidebar() {
     }
     return () => clearTimeout(timeout)
   }, [isHovering, setIsSidebarOpen])
+
+  const isActive = (href: string) => {
+    return pathname === href || pathname.startsWith(`${href}/`)
+  }
 
   return (
     <motion.div
@@ -63,38 +67,44 @@ export function DashboardSidebar() {
     >
       <div className="flex h-16 items-center justify-center">
         <motion.div
-          animate={{ opacity: isSidebarOpen ? 1 : 0 }}
+          animate={{ opacity: isSidebarOpen ? 1 : 0.8 }}
           transition={{ duration: 0.2 }}
           className="text-xl font-bold text-white"
         >
           {isSidebarOpen ? "Hotel OS" : "HO"}
         </motion.div>
       </div>
-      <div className="px-3 py-4 my-3 ">
-        {menuItems.map((item) => (
-          <Link key={item.name} href={item.href}>
-            <motion.div
-              whileHover={{ scale: 1.02 }}
-              className="group mb-2 flex cursor-pointer items-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-800"
-            >
-              <item.icon className="h-5 w-5" />
-              <AnimatePresence>
-                {isSidebarOpen && (
-                  <motion.span
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -10 }}
-                    className="ml-3"
-                  >
-                    {item.name}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          </Link>
-        ))}
+      <div className="px-3 py-4 my-3">
+        {menuItems.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link key={item.name} href={item.href} className="block">
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                className={`group mb-2 flex cursor-pointer items-center rounded-lg p-2 transition-colors ${
+                  active 
+                    ? "bg-gray-700 text-white" 
+                    : "text-gray-300 hover:bg-gray-800"
+                }`}
+              >
+                <item.icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
+                <AnimatePresence>
+                  {isSidebarOpen && (
+                    <motion.span
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -10 }}
+                      className="ml-3"
+                    >
+                      {item.name}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            </Link>
+          );
+        })}
       </div>
     </motion.div>
   )
 }
-

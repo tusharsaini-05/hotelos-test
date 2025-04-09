@@ -25,7 +25,6 @@ interface BookingCalendarProps {
 export default function BookingCalendar({
   bookings,
   occupancyData,
-  currentDate,
   isLoading,
   onBookingClick,
 }: BookingCalendarProps) {
