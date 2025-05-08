@@ -3,70 +3,115 @@
 import { useState, useEffect } from "react"
 import RoomBlock from "./room-block"
 
-// Mock room data generator
-const generateMockRooms = (hotelId: string, floors: number, roomsPerFloor: number) => {
-  const rooms = []
-  const statuses = ["AVAILABLE", "BOOKED", "OCCUPIED", "CLEANING", "MAINTENANCE"]
-
-  for (let floor = 1; floor <= floors; floor++) {
-    for (let room = 1; room <= roomsPerFloor; room++) {
-      const roomNumber = `${floor}${room.toString().padStart(2, "0")}`
-      const randomStatus = statuses[Math.floor(Math.random() * 5)]
-      const isAvailable = randomStatus === "AVAILABLE"
-
-      // Generate random check-in/out times for booked rooms
-      const now = new Date()
-      const checkInDate = new Date(now)
-      checkInDate.setDate(now.getDate() - Math.floor(Math.random() * 3))
-      const checkOutDate = new Date(checkInDate)
-      checkOutDate.setDate(checkInDate.getDate() + Math.floor(Math.random() * 7) + 1)
-
-      rooms.push({
-        id: `room-${hotelId}-${roomNumber}`,
-        hotelId,
-        roomNumber,
-        floor,
-        status: randomStatus,
-        isAvailable,
-        checkInTime: isAvailable ? null : checkInDate.toISOString(),
-        checkOutTime: isAvailable ? null : checkOutDate.toISOString(),
-        guestName: isAvailable ? null : `Guest ${Math.floor(Math.random() * 1000)}`,
-      })
-    }
-  }
-
-  return rooms
+type Room = {
+  id: string
+  roomNumber: string
+  roomType: string
+  bedType: string
+  pricePerNight: number
+  status: string
+  amenities: string[]
+  images: string[]
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  maintenanceNotes: string
+  extraBedAllowed: boolean
+  lastMaintained: string
+  extraBedPrice: number
+  baseOccupancy: number
+  maxOccupancy: number
+  lastCleaned: string
+  floor: number
+  hotelId: string
+  roomSize: number
+  bedCount: number
+  isAvailable?: boolean
+  checkInTime?: string | null
+  checkOutTime?: string | null
+  guestName?: string | null
 }
 
 type RoomGridProps = {
   hotelId: string
-  floors: number
-  roomsPerFloor: number
-  onCreateBooking: (room: any) => void
+  floorCount: number
+  onCreateBooking: (room: Room) => void
 }
 
-export default function RoomGrid({ hotelId, floors, roomsPerFloor, onCreateBooking }: RoomGridProps) {
-  const [rooms, setRooms] = useState<any[]>([])
+export default function RoomGrid({ hotelId, floorCount, onCreateBooking }: RoomGridProps) {
+  const [rooms, setRooms] = useState<Room[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Simulate API call to fetch rooms
     const fetchRooms = async () => {
+      if (!hotelId) return
+      
       setIsLoading(true)
       try {
-        // In a real app, this would be an API call
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        const mockRooms = generateMockRooms(hotelId, floors, roomsPerFloor)
-        setRooms(mockRooms)
+        // Using the provided GraphQL query
+        const query = `
+          query GetRooms {
+            rooms(
+              hotelId: "${hotelId}"
+              limit: 100
+            ) {
+              id
+              roomNumber
+              roomType
+              bedType
+              pricePerNight
+              status
+              amenities
+              images
+              isActive
+              createdAt
+              updatedAt
+              maintenanceNotes
+              extraBedAllowed
+              lastMaintained
+              extraBedPrice
+              baseOccupancy
+              maxOccupancy
+              lastCleaned
+              floor
+              hotelId
+              roomSize
+              bedCount
+            }
+          }
+        `
+
+        // Replace this with your actual GraphQL fetch function
+        const response = await fetch('http://localhost:8000/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query }),
+        })
+
+        const data = await response.json()
+        
+        if (data.data && data.data.rooms) {
+          const processedRooms = data.data.rooms.map((room: Room) => ({
+            ...room,
+            isAvailable: room.status === "AVAILABLE"
+          }))
+          setRooms(processedRooms)
+        } else {
+          console.error("Error fetching rooms: Invalid response structure", data)
+          setRooms([])
+        }
       } catch (error) {
         console.error("Error fetching rooms:", error)
+        setRooms([])
       } finally {
         setIsLoading(false)
       }
     }
 
     fetchRooms()
-  }, [hotelId, floors, roomsPerFloor])
+  }, [hotelId])
 
   if (isLoading) {
     return (
@@ -75,6 +120,14 @@ export default function RoomGrid({ hotelId, floors, roomsPerFloor, onCreateBooki
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
           <p className="text-muted-foreground">Loading rooms...</p>
         </div>
+      </div>
+    )
+  }
+
+  if (rooms.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">No rooms found for this hotel.</p>
       </div>
     )
   }
@@ -89,7 +142,7 @@ export default function RoomGrid({ hotelId, floors, roomsPerFloor, onCreateBooki
       acc[floor].push(room)
       return acc
     },
-    {} as Record<number, any[]>,
+    {} as Record<number, Room[]>,
   )
 
   return (
@@ -101,9 +154,13 @@ export default function RoomGrid({ hotelId, floors, roomsPerFloor, onCreateBooki
             <h3 className="text-lg font-medium">Floor {floor}</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8 gap-4">
               {floorRooms
-                .sort((a : any, b : any) => a.roomNumber.localeCompare(b.roomNumber))
-                .map((room : any) => (
-                  <RoomBlock key={room.id} room={room} onCreateBooking={() => onCreateBooking(room)} />
+                .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber))
+                .map((room) => (
+                  <RoomBlock 
+                    key={room.id} 
+                    room={room} 
+                    onCreateBooking={() => onCreateBooking(room)} 
+                  />
                 ))}
             </div>
           </div>
@@ -111,4 +168,3 @@ export default function RoomGrid({ hotelId, floors, roomsPerFloor, onCreateBooki
     </div>
   )
 }
-

@@ -46,6 +46,8 @@ export function HotelProvider({ children }: { children: React.ReactNode }) {
   const [userHotels, setUserHotels] = useState<Hotel[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const { data: session, status } = useSession()
+  
+
 
   // Function to fetch hotels for the current user
   const fetchUserHotels = async () => {

@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import Image from "next/image"
 
 type HotelImagesFormProps = {
   hotel: any
@@ -120,7 +121,7 @@ export default function HotelImagesForm({ hotel, onSuccess }: HotelImagesFormPro
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {images.map((imageUrl, index) => (
                   <div key={index} className="relative group">
-                    <img
+                    <Image
                       src={imageUrl || "/placeholder.svg"}
                       alt={`Hotel image ${index + 1}`}
                       className="w-full h-48 object-cover rounded-md border"
@@ -167,7 +168,7 @@ export default function HotelImagesForm({ hotel, onSuccess }: HotelImagesFormPro
           </DialogHeader>
           <div className="py-4">
             {selectedImage && (
-              <img
+              <Image
                 src={selectedImage || "/placeholder.svg"}
                 alt="Image to delete"
                 className="w-full h-48 object-cover rounded-md border"

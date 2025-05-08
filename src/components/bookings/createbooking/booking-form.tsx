@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -11,37 +12,62 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
 import { AlertCircle, CalendarIcon, Loader2 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { format, addDays } from "date-fns"
 import { cn } from "@/lib/utils"
 
-// Mock room data for dropdown
-const mockRooms = [
-  { id: "room-1", roomNumber: "101", type: "Standard", price: 100 },
-  { id: "room-2", roomNumber: "102", type: "Deluxe", price: 150 },
-  { id: "room-3", roomNumber: "201", type: "Suite", price: 250 },
-  { id: "room-4", roomNumber: "202", type: "Standard", price: 100 },
-  { id: "room-5", roomNumber: "301", type: "Deluxe", price: 150 },
+// Define the Room type based on the data structure from the GetRooms query
+type Room = {
+  id: string
+  roomNumber: string
+  roomType: string
+  bedType: string
+  pricePerNight: number
+  status: string
+  amenities: string[]
+  floor: number
+  baseOccupancy: number
+  maxOccupancy: number
+  extraBedAllowed: boolean
+  extraBedPrice: number
+  // Include other properties as needed
+}
+
+const bookingSourceOptions = [
+  { value: "WEBSITE", label: "Website" },
+  { value: "WALK_IN", label: "Walk-in" },
+  { value: "PHONE", label: "Phone" },
+  { value: "TRAVEL_AGENT", label: "Travel Agent" },
+  { value: "CORPORATE", label: "Corporate" },
+  { value: "OTA", label: "Online Travel Agency" },
 ]
 
+const ratePlanOptions = [
+  { value: "standard", label: "Standard Rate" },
+  { value: "premium", label: "Premium Rate" },
+  { value: "corporate", label: "Corporate Rate" },
+  { value: "government", label: "Government Rate" },
+  { value: "seasonal", label: "Seasonal Special" },
+]
+
+// Form schema aligned with the mutation structure
 const formSchema = z.object({
   hotelId: z.string().min(1, { message: "Hotel ID is required" }),
   roomId: z.string().min(1, { message: "Room is required" }),
-  guestFirstName: z.string().min(1, { message: "First name is required" }),
-  guestLastName: z.string().min(1, { message: "Last name is required" }),
-  guestEmail: z.string().email({ message: "Invalid email address" }),
-  guestPhone: z.string().min(5, { message: "Phone number is required" }),
+  firstName: z.string().min(1, { message: "First name is required" }),
+  lastName: z.string().min(1, { message: "Last name is required" }),
+  email: z.string().email({ message: "Invalid email address" }),
+  phone: z.string().min(5, { message: "Phone number is required" }),
+  address: z.string().optional(),
+  bookingSource: z.string().min(1, { message: "Booking source is required" }),
   checkInDate: z.date({ required_error: "Check-in date is required" }),
   checkOutDate: z.date({ required_error: "Check-out date is required" }),
-  adults: z.coerce.number().int().min(1, { message: "At least 1 adult is required" }),
-  children: z.coerce.number().int().min(0),
+  numberOfGuests: z.coerce.number().int().min(1, { message: "At least 1 guest is required" }),
+  numberOfRooms: z.coerce.number().int().min(1, { message: "Number of rooms is required" }).default(1),
+  ratePlan: z.string().min(1, { message: "Rate plan is required" }),
   specialRequests: z.string().optional(),
-  paymentMethod: z.string().min(1, { message: "Payment method is required" }),
-  extraBed: z.boolean().default(false),
-  totalAmount: z.coerce.number().positive({ message: "Total amount must be positive" }),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -51,106 +77,114 @@ type BookingFormProps = {
   hotelName: string
   roomId?: string
   roomNumber?: string
+  room?: Room | null
   onSuccess: () => void
 }
 
-export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, onSuccess }: BookingFormProps) {
+export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, room, onSuccess }: BookingFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Find the selected room from mock data if roomId is provided
-  const selectedRoom = roomId
-    ? mockRooms.find((r) => r.id === roomId)
-    : roomNumber
-      ? mockRooms.find((r) => r.roomNumber === roomNumber)
-      : null
-
   const today = new Date()
-  const tomorrow = addDays(today, 1)
+  const checkoutDefault = addDays(today, 1)
 
+  // Initialize form with default values
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       hotelId,
-      roomId: selectedRoom?.id || "",
-      guestFirstName: "",
-      guestLastName: "",
-      guestEmail: "",
-      guestPhone: "",
+      roomId: roomId || "",
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      address: "",
+      bookingSource: "WALK_IN",
       checkInDate: today,
-      checkOutDate: tomorrow,
-      adults: 1,
-      children: 0,
+      checkOutDate: checkoutDefault,
+      numberOfGuests: room?.baseOccupancy || 1,
+      numberOfRooms: 1,
+      ratePlan: "standard",
       specialRequests: "",
-      paymentMethod: "CREDIT_CARD",
-      extraBed: false,
-      totalAmount: selectedRoom?.price || 0,
     },
   })
-
-  // Calculate total amount when relevant fields change
-  const watchCheckInDate = form.watch("checkInDate")
-  const watchCheckOutDate = form.watch("checkOutDate")
-  const watchRoomId = form.watch("roomId")
-  const watchExtraBed = form.watch("extraBed")
-
-  // Calculate nights
-  const nights = Math.max(
-    1,
-    Math.ceil((watchCheckOutDate.getTime() - watchCheckInDate.getTime()) / (1000 * 60 * 60 * 24)),
-  )
-
-  // Find room price
-  const selectedRoomPrice = mockRooms.find((r) => r.id === watchRoomId)?.price || 0
-
-  // Calculate total
-  const extraBedFee = watchExtraBed ? 50 : 0
-  const totalAmount = selectedRoomPrice * nights + extraBedFee
-
-  // Update total amount when calculation changes
-  if (form.getValues("totalAmount") !== totalAmount) {
-    form.setValue("totalAmount", totalAmount)
-  }
 
   async function onSubmit(values: FormValues) {
     setIsSubmitting(true)
     setError(null)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      // Prepare mutation variables based on form values
+      const mutationVariables = {
+        bookingData: {
+          hotelId: values.hotelId,
+          roomId: values.roomId,
+          guest: {
+            firstName: values.firstName,
+            lastName: values.lastName,
+            email: values.email,
+            phone: values.phone,
+            address: values.address || "",
+          },
+          bookingSource: values.bookingSource,
+          checkInDate: values.checkInDate.toISOString(),
+          checkOutDate: values.checkOutDate.toISOString(),
+          numberOfGuests: values.numberOfGuests,
+          numberOfRooms: values.numberOfRooms,
+          ratePlan: values.ratePlan,
+          specialRequests: values.specialRequests || "",
+        },
+      }
 
-      // This would be your actual mutation call
-      /*
-      const response = await createBooking({
-        variables: {
-          bookingData: {
-            hotelId: values.hotelId,
-            roomId: values.roomId,
-            guestFirstName: values.guestFirstName,
-            guestLastName: values.guestLastName,
-            guestEmail: values.guestEmail,
-            guestPhone: values.guestPhone,
-            checkInDate: values.checkInDate.toISOString(),
-            checkOutDate: values.checkOutDate.toISOString(),
-            adults: values.adults,
-            children: values.children,
-            specialRequests: values.specialRequests,
-            paymentMethod: values.paymentMethod,
-            extraBed: values.extraBed,
-            totalAmount: values.totalAmount,
-          }
-        }
+      // This would be your actual GraphQL mutation call
+      // Here's a placeholder for the API call
+      const response = await fetch('http://localhost:8000/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `
+            mutation CreateBooking($bookingData: BookingInput!) {
+              createBooking(bookingData: $bookingData) {
+                id
+                bookingNumber
+                hotelId
+                roomId
+                guest {
+                  firstName
+                  lastName
+                  email
+                }
+                checkInDate
+                checkOutDate
+                roomType
+                baseAmount
+                taxAmount
+                totalAmount
+                bookingStatus
+                paymentStatus
+                createdAt
+              }
+            }
+          `,
+          variables: mutationVariables,
+        }),
       });
-      */
 
-      console.log("Booking created:", values)
-      onSuccess()
-    } catch (err) {
-      setError("Failed to create booking. Please try again.")
-      console.error(err)
+      const result = await response.json();
+      
+      if (result.errors) {
+        throw new Error(result.errors[0]?.message || 'Failed to create booking');
+      }
+
+      console.log("Booking created:", result.data.createBooking);
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message || "Failed to create booking. Please try again.");
+      console.error(err);
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
   }
 
@@ -170,6 +204,7 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
             <div className="mb-4 pb-4 border-b">
               <h3 className="text-lg font-medium">Booking Details</h3>
               <p className="text-sm text-muted-foreground">Hotel: {hotelName}</p>
+              {room && <p className="text-sm text-muted-foreground">Room: {room.roomNumber} - {room.roomType}</p>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -192,17 +227,56 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
                 name="roomId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Room</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!!selectedRoom}>
+                    <FormLabel>Room ID</FormLabel>
+                    <FormControl>
+                      <Input {...field} readOnly={!!roomId} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="bookingSource"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Booking Source</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select a room" />
+                          <SelectValue placeholder="Select booking source" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {mockRooms.map((room) => (
-                          <SelectItem key={room.id} value={room.id}>
-                            Room {room.roomNumber} - {room.type} (${room.price}/night)
+                        {bookingSourceOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="ratePlan"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Rate Plan</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select rate plan" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {ratePlanOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -224,7 +298,7 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
-                name="guestFirstName"
+                name="firstName"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>First Name</FormLabel>
@@ -238,7 +312,7 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
 
               <FormField
                 control={form.control}
-                name="guestLastName"
+                name="lastName"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Last Name</FormLabel>
@@ -252,7 +326,7 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
 
               <FormField
                 control={form.control}
-                name="guestEmail"
+                name="email"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Email</FormLabel>
@@ -266,12 +340,26 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
 
               <FormField
                 control={form.control}
-                name="guestPhone"
+                name="phone"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Phone</FormLabel>
                     <FormControl>
                       <Input placeholder="+1 (555) 123-4567" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="address"
+                render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Address</FormLabel>
+                    <FormControl>
+                      <Input placeholder="123 Main St, Anytown, USA" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -344,7 +432,10 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
                           mode="single"
                           selected={field.value}
                           onSelect={field.onChange}
-                          disabled={(date) => date < watchCheckInDate || date < today}
+                          disabled={(date) => {
+                            const checkInDate = form.getValues("checkInDate");
+                            return date <= checkInDate;
+                          }}
                           initialFocus
                         />
                       </PopoverContent>
@@ -356,13 +447,21 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
 
               <FormField
                 control={form.control}
-                name="adults"
+                name="numberOfGuests"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Adults</FormLabel>
+                    <FormLabel>Number of Guests</FormLabel>
                     <FormControl>
-                      <Input type="number" min="1" {...field} />
+                      <Input 
+                        type="number" 
+                        min="1" 
+                        max={room?.maxOccupancy || 4} 
+                        {...field} 
+                      />
                     </FormControl>
+                    {room && (
+                      <FormDescription>Max occupancy: {room.maxOccupancy}</FormDescription>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -370,14 +469,19 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
 
               <FormField
                 control={form.control}
-                name="children"
+                name="numberOfRooms"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Children</FormLabel>
+                    <FormLabel>Number of Rooms</FormLabel>
                     <FormControl>
-                      <Input type="number" min="0" {...field} />
+                      <Input 
+                        type="number" 
+                        min="1" 
+                        {...field} 
+                        defaultValue={1} 
+                        readOnly={!!roomId} // Make read-only if a specific room is selected
+                      />
                     </FormControl>
-                    <FormDescription>Number of children (under 12 years)</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -404,94 +508,22 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, on
                 )}
               />
             </div>
-
-            <div className="mt-6">
-              <FormField
-                control={form.control}
-                name="extraBed"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                    <FormControl>
-                      <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Extra Bed</FormLabel>
-                      <FormDescription>Add an extra bed for $50 per night</FormDescription>
-                    </div>
-                  </FormItem>
-                )}
-              />
-            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="mb-4 pb-4 border-b">
-              <h3 className="text-lg font-medium">Payment Information</h3>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="paymentMethod"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Payment Method</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select payment method" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="CREDIT_CARD">Credit Card</SelectItem>
-                        <SelectItem value="DEBIT_CARD">Debit Card</SelectItem>
-                        <SelectItem value="PAYPAL">PayPal</SelectItem>
-                        <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                        <SelectItem value="CASH">Cash (Pay at Hotel)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="totalAmount"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Total Amount</FormLabel>
-                    <FormControl>
-                      <Input type="number" min="0" step="0.01" {...field} readOnly className="bg-muted" />
-                    </FormControl>
-                    <FormDescription>
-                      {nights} night{nights > 1 ? "s" : ""} × ${selectedRoomPrice}
-                      {watchExtraBed ? ` + $50 extra bed fee` : ""}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="mt-6 pt-6 border-t flex justify-end">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating Booking...
-                  </>
-                ) : (
-                  "Create Booking"
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="mt-6 pt-6 flex justify-end">
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating Booking...
+              </>
+            ) : (
+              "Create Booking"
+            )}
+          </Button>
+        </div>
       </form>
     </Form>
   )
 }
-
