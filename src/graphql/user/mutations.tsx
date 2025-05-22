@@ -44,7 +44,7 @@ export const UPDATE_USER = gql `mutation UpadateUser($id:String!,$userData: User
      }
   } `
 
-export  const UPDATE_USER_ROLE = gql `mutations UpdateUserRole($userId:String!,$newRole:String!){
+export  const UPDATE_USER_ROLE = gql `mutation UpdateUserRole($userId:String!,$newRole:String!){
      updateUserRole(userId:$userId,newRole:$newRole){
         id
         email

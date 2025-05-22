@@ -125,6 +125,11 @@ export default function BookingForm({ hotelId, hotelName, roomId, roomNumber, ro
             email: values.email,
             phone: values.phone,
             address: values.address || "",
+            city: "",
+            country: "",
+            idType: "",
+            idNumber: "",
+            specialRequests: ""
           },
           bookingSource: values.bookingSource,
           checkInDate: values.checkInDate.toISOString(),

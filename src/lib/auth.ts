@@ -31,6 +31,7 @@ export const NEXT_AUTH_CONFIG: NextAuthOptions = {
                       id
                       email
                       role
+                      hotelIds
                     }
                   }
                 }
@@ -80,6 +81,7 @@ export const NEXT_AUTH_CONFIG: NextAuthOptions = {
       console.log("JWT Callback - User:", user ? { id: user.id, role: user.role } : "No user");
       
       if (user) {
+        
         token.uid = user.id;
         token.role = user.role;
       }

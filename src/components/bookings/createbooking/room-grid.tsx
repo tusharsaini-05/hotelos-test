@@ -91,7 +91,7 @@ export default function RoomGrid({ hotelId, floorCount, onCreateBooking }: RoomG
         })
 
         const data = await response.json()
-        
+        console.log(data)
         if (data.data && data.data.rooms) {
           const processedRooms = data.data.rooms.map((room: Room) => ({
             ...room,

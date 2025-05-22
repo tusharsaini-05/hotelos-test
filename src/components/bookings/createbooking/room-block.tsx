@@ -153,4 +153,3 @@ export default function RoomBlock({ room, onCreateBooking }: RoomBlockProps) {
     </HoverCard>
   )
 }
-

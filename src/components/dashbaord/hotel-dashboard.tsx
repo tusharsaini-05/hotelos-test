@@ -201,9 +201,18 @@ interface SelectedHotel {
 interface Session {
   user?: {
     id?: string
+    role?:UserRole
   }
   accessToken?: string
   [key: string]: any
+}
+enum UserRole {
+  SUPERADMIN = "superadmin",
+  HOTEL_ADMIN = "hotel_admin",
+  STAFF = "staff",
+  RECEPTIONIST = "receptionist",
+  HOUSEKEEPER = "housekeeper",
+  MAINTENANCE = "maintenance"
 }
 
 export default function HotelDashboard() {
@@ -215,9 +224,10 @@ export default function HotelDashboard() {
     to: new Date(),
   })
 
-  const { selectedHotel } = useHotelContext() as { selectedHotel?: SelectedHotel }
-  const { data: session } = useSession() as { data?: Session }
+  const { selectedHotel } = useHotelContext() 
+  const { data: session } = useSession()
   const adminId = session?.user?.id
+  const role = session?.user?.role
 
   // GraphQL endpoint - adjust based on your environment
   const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT || 'http://localhost:8000/graphql'
@@ -490,9 +500,13 @@ export default function HotelDashboard() {
     if (!dateRange.from || !dateRange.to) {
       throw new Error("Invalid date range")
     }
+
+    const userRole= session?.user?.role 
     
-    const hotel = hotelResponse.hotel.getHotels.find(h => h.id === selectedHotel?.id) || 
-                  hotelResponse.hotel.getHotels[0]
+    
+    const  hotel = userRole === "SUPERADMIN" ?  hotelResponse.hotel.getHotels.find(h => h.id === selectedHotel?.id) || 
+                  hotelResponse.hotel.getHotels[0] : selectedHotel
+  
     const rooms = roomsResponse.rooms || []
     const bookings = bookingsResponse.bookings || []
     
@@ -667,7 +681,7 @@ export default function HotelDashboard() {
     
     // Generate data for floor occupancy (heatmap)
     const floorOccupancy: ChartDataItem[] = []
-    for (let i = 1; i <= (hotel.floorCount || 4); i++) {
+    for (let i = 1; i <= (hotel?.floorCount || 4); i++) {
       // If we have floor data, use it instead of random values
       const floorRooms = rooms.filter(r => r.floor === i)
       const occupiedFloorRooms = floorRooms.filter(r => r.status === 'OCCUPIED')
@@ -763,7 +777,7 @@ export default function HotelDashboard() {
         averageDailyRateChange: 0, // Mock value
         revPAR,
         totalGuests,
-        totalRooms: hotel.roomCount || rooms.length
+        totalRooms: hotel?.roomCount || rooms.length
       },
       recentBookings: filteredBookings,
       roomTypeDistribution,

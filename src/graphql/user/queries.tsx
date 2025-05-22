@@ -10,6 +10,7 @@ export const GET_USER = gql`
       role
       phone
       isActive
+      hotelIds
       createdAt
       updatedAt
     }

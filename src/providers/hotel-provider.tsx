@@ -2,7 +2,9 @@
 
 import React, { createContext, useState, useContext, useEffect } from "react"
 import { useSession } from "next-auth/react"
-
+import { useQuery } from "@apollo/client"
+import { GET_HOTEL } from "@/graphql/hotel/queries"
+import { GET_USER } from "@/graphql/user/queries"
 export type Hotel = {
   id: string
   name: string
@@ -46,6 +48,7 @@ export function HotelProvider({ children }: { children: React.ReactNode }) {
   const [userHotels, setUserHotels] = useState<Hotel[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const { data: session, status } = useSession()
+
   
 
 
@@ -66,16 +69,20 @@ export function HotelProvider({ children }: { children: React.ReactNode }) {
     const userId = session?.user?.id || 
                   (session?.user as any)?.id || 
                   (session as any)?.userId
+   
     
     if (!userId) {
       console.error("User ID not found in session:", session)
       setIsLoading(false)
       return
     }
-    
+     const userRole = session?.user?.role
+     
     setIsLoading(true)
-    try {
+    if(userRole === "SUPERADMIN"){
+      try {
       console.log("Fetching hotels for user ID:", userId)
+      
       
       const response = await fetch("http://localhost:8000/graphql", {
         method: "POST",
@@ -135,7 +142,127 @@ export function HotelProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false)
     }
+    }
+    else {
+  try {
+    // Step 1: Fetch the user to get hotelIds
+    const userResponse = await fetch("http://localhost:8000/graphql", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
+      },
+      body: JSON.stringify({
+        query: `
+          query {
+            user {
+              getUser(id: "${userId}") {
+                id
+                email
+                name
+                role
+                phone
+                hotelIds
+              }
+            }
+          }
+        `
+      }),
+    });
+
+    const userResult = await userResponse.json();
+    const hotelIds: string[] = userResult?.data?.user?.getUser?.hotelIds || [];
+    
+
+    // Step 2: Fetch all hotels
+    const hotelResponse = await fetch("http://localhost:8000/graphql", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${(session as any)?.accessToken || ''}`,
+  },
+  body: JSON.stringify({
+    query: `
+      query GetHotels(
+        $status: HotelStatus
+        $city: String
+        $country: String
+        $adminId: String
+        $limit: Int!
+        $offset: Int!
+      ) {
+        hotel {
+          getHotels(
+            status: $status
+            city: $city
+            country: $country
+            adminId: $adminId
+            limit: $limit
+            offset: $offset
+          ) {
+            id
+                  name
+                  description
+                  status
+                  amenities
+                  policies {
+                    checkInTime
+                    checkOutTime
+                    petPolicy
+                  }
+                  images
+                  createdAt
+                  updatedAt
+                  address
+                  state
+                  contactPhone
+                  contactEmail
+                  starRating
+                  floorCount
+                  roomCount
+                  city
+                  country
+                  website
+                  description
+          }
+        }
+      }
+    `,
+    variables: {
+      status: null,
+      city: null,
+      country: null,
+      adminId: null,
+      limit: 100,
+      offset: 0,
+    },
+  }),
+});
+
+    const hotelResult = await hotelResponse.json();
+    const allHotels: Hotel[] = hotelResult?.data?.hotel?.getHotels || [];
+    
+
+    // Step 3: Filter hotels based on hotelIds
+    const filteredHotels = allHotels.filter(hotel => hotelIds.includes(hotel.id));
+
+    // Step 4: Update state
+    setUserHotels(filteredHotels);
+    if (!selectedHotel && filteredHotels.length > 0) {
+      setSelectedHotel(filteredHotels[0]);
+    }
+
+  } catch (error) {
+    console.error("Error fetching HOTEL_ADMIN hotels:", error);
+  } finally {
+    setIsLoading(false);
   }
+}
+
+    
+    
+  }
+  
 
   // Load hotels when session is available
   useEffect(() => {
