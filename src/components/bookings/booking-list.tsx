@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
 import { format } from "date-fns"
 import { useHotelContext } from "@/providers/hotel-provider"
+import React from "react"
 
 
 interface BookingsSectionProps {
@@ -21,7 +22,27 @@ interface BookingsSectionProps {
   calculateNights: (checkInDate: string, checkOutDate: string) => number
   formatDateRange: (checkIn: string, checkOut: string) => string
 }
+enum RoomType{
+  "STANDARD"="standard",
+  "DELUXE" = "deluxe",
+  "SUITE" = "suite",
+  "EXECUTIVE" = "executive",
+  "PRESIDENTIAL" = "presidential"
+}
+enum BookingStatus{
+  "PENDING" = "pending",
+  "CONFIRMED" = "confirmed",
+  "CHECKED_IN" = "checked_in",
+  "CHECKED_OUT" = "checked_out",
+  "CANCELLED" = "cancelled",
+  "NO_SHOW" = "no_show"
+}
 
+interface RoomTypeBookings{
+  roomType:string,
+  noOfRooms:number,
+  roomIds:[String]
+}
 
 interface Booking {
   id: string
@@ -33,9 +54,13 @@ interface Booking {
   }
   checkInDate: string
   checkOutDate: string
-  numberOfRooms: number
   numberOfGuests: number
-  roomType: string
+  roomTypeBookings:{
+    flatMap(arg0: (rtb: { numberOfRooms: any; roomType: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | null | undefined> | null | undefined }) => React.JSX.Element[]): React.ReactNode
+    roomType:string,
+    noOfRooms:number,
+    roomIds:[String]
+  }
   bookingStatus: string
   paymentStatus: string
   totalAmount: number
@@ -46,18 +71,18 @@ interface BookingsListProps {
   onSelectBooking: (bookingId: string) => void
 }
 
-type BookingCategory = 'upcoming' | 'inhouse' | 'completed';
+type BookingCategory = 'confirmed' | 'checked_in' | 'checked_out';
 
 export function BookingsList({ onSelectBooking }: BookingsListProps) {
-  const [activeTab, setActiveTab] = useState<BookingCategory>("upcoming")
+  const [activeTab, setActiveTab] = useState<BookingCategory>("confirmed")
   const [bookings, setBookings] = useState<{
-    upcoming: Booking[];
-    inhouse: Booking[];
-    completed: Booking[];
+    confirmed: Booking[];
+    checked_in: Booking[];
+    checked_out: Booking[];
   }>({
-    upcoming: [],
-    inhouse: [],
-    completed: []
+    confirmed: [],
+    checked_in: [],
+    checked_out: []
   })
   const [loading, setLoading] = useState(true)
   const [emailSearch, setEmailSearch] = useState("")
@@ -101,26 +126,28 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
         },
         body: JSON.stringify({
           query: `
-            query GetBookings($hotelId: String!, $limit: Int) {
-              bookings(hotelId: $hotelId, limit: $limit) {
-                id
-                bookingNumber
-                guest {
-                  firstName
-                  lastName
-                  email
+            query bookings($hotelId:String){
+                bookings(hotelId:$hotelId){
+                  hotelId
+                  bookingNumber
+                  guest{
+                    firstName
+                    lastName
+                    email
+                  }
+                  roomTypeBookings{
+                    roomType
+                    numberOfRooms
+                  }
+                  checkInDate 
+                  checkOutDate
+                  bookingStatus
+                  paymentStatus
+                  totalAmount
+                  numberOfGuests
+                  createdAt
                 }
-                checkInDate
-                checkOutDate
-                roomType
-                bookingStatus
-                paymentStatus
-                totalAmount
-                numberOfRooms
-                numberOfGuests
-                createdAt
-              }
-            }
+          }
           `,
           variables: { 
             hotelId: `${selectedHotel?.id}`, 
@@ -131,29 +158,32 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
       
       const result = await response.json()
       
+      
       if (result.errors) {
         throw new Error(result.errors[0].message)
       }
       
       const allBookings = result.data.bookings || []
+      console.log(allBookings)
       
       // Current date for comparison
       const now = new Date()
       
       // Filter bookings by status
       const categorizedBookings = {
-        upcoming: allBookings.filter((booking: Booking) => {
-          const checkInDate = new Date(booking.checkInDate)
-          return checkInDate > now && booking.bookingStatus !== "CANCELLED" && booking.bookingStatus !== "NO_SHOW"
-        }),
-        inhouse: allBookings.filter((booking: Booking) => 
+        confirmed: allBookings.filter((booking: Booking) => 
+          booking.bookingStatus === "CONFIRMED"
+         // const checkInDate = new Date(booking.checkInDate)
+         // return checkInDate > now && booking.bookingStatus !== "CANCELLED" && booking.bookingStatus !== "NO_SHOW"
+        ),
+        checked_in: allBookings.filter((booking: Booking) => 
           booking.bookingStatus === "CHECKED_IN"
         ),
-        completed: allBookings.filter((booking: Booking) => 
+        checked_out: allBookings.filter((booking: Booking) => 
           booking.bookingStatus === "CHECKED_OUT" || booking.bookingStatus === "CANCELLED" || booking.bookingStatus === "NO_SHOW"
         )
       }
-      
+      console.log(categorizedBookings)
       setBookings(categorizedBookings)
     } catch (error) {
       console.error("Error fetching bookings:", error)
@@ -204,11 +234,13 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                 }
                 checkInDate
                 checkOutDate
-                roomType
+                roomTypeBookings{
+                    roomType
+                    numberOfRooms
+                 }
                 bookingStatus
                 paymentStatus
                 totalAmount
-                numberOfRooms
                 numberOfGuests
                 createdAt
               }
@@ -236,14 +268,14 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
       
       // Categorize search results
       const categorizedResults = {
-        upcoming: searchResults.filter((booking: Booking) => {
+        confirmed: searchResults.filter((booking: Booking) => {
           const checkInDate = new Date(booking.checkInDate)
           return checkInDate > now && booking.bookingStatus !== "CANCELLED" && booking.bookingStatus !== "NO_SHOW"
         }),
-        inhouse: searchResults.filter((booking: Booking) => 
+        checked_in: searchResults.filter((booking: Booking) => 
           booking.bookingStatus === "CHECKED_IN"
         ),
-        completed: searchResults.filter((booking: Booking) => 
+        checked_out: searchResults.filter((booking: Booking) => 
           booking.bookingStatus === "CHECKED_OUT" || booking.bookingStatus === "CANCELLED" || booking.bookingStatus === "NO_SHOW"
         )
       }
@@ -292,8 +324,8 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
   
   // Calculate room counts
   const calculateRooms = (bookingsList: Booking[]) => {
-    return bookingsList.reduce((total, booking) => total + (booking.numberOfRooms || 1), 0)
-  }
+  return bookingsList.reduce((total, booking) => total + booking.roomTypeBookings.noOfRooms, 0);
+};
   
   const todayRoomCount = calculateRooms(todayBookings)
   const previousRoomCount = calculateRooms(previousBookings)
@@ -394,13 +426,13 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
       <Tabs value={activeTab} onValueChange={handleTabChange} className="mb-6">
         <TabsList className="grid w-full max-w-md grid-cols-3">
           <TabsTrigger value="upcoming" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
-            Upcoming ({bookings.upcoming.length})
+            confirmed ({bookings.confirmed.length})
           </TabsTrigger>
           <TabsTrigger value="inhouse" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">
-            In House ({bookings.inhouse.length})
+            checked_in ({bookings.checked_in.length})
           </TabsTrigger>
           <TabsTrigger value="completed" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-            Completed ({bookings.completed.length})
+            checked_out ({bookings.checked_out.length})
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -488,71 +520,125 @@ function BookingsSection({
         )}
       </div>
 
-      <div className="rounded-lg border bg-white shadow-sm">
-        <div className="grid grid-cols-5 gap-4 border-b bg-gray-50 p-4 text-sm font-medium text-gray-500">
-          <div>NAME</div>
-          <div>BOOKING ID</div>
-          <div>ROOM NIGHTS</div>
-          <div>PAYMENTS</div>
-          <div>BOOKING INFO</div>
-        </div>
+      <div className="space-y-4">
+  {bookings.map((booking) => {
+    const nights = calculateNights(booking.checkInDate, booking.checkOutDate)
 
-        {bookings.map((booking) => {
-          // Calculate nights using the passed function
-          const nights = calculateNights(booking.checkInDate, booking.checkOutDate)
-          
-          // Determine status color
-          const getStatusColor = (status: string) => {
-            switch(status) {
-              case "CONFIRMED": return "text-green-500"
-              case "CHECKED_IN": return "text-blue-500"
-              case "CHECKED_OUT": return "text-purple-500"
-              case "CANCELLED": return "text-red-500"
-              case "NO_SHOW": return "text-yellow-500"
-              default: return "text-gray-500"
-            }
-          }
-          
-          return (
-            <motion.div
-              key={booking.id}
-              whileHover={{ backgroundColor: "rgba(0,0,0,0.01)" }}
-              className="grid cursor-pointer grid-cols-5 gap-4 p-4 border-b last:border-b-0"
-              onClick={() => onSelectBooking(booking.id)}
-            >
-              <div>
-                <div className="font-medium">{booking.guest.firstName} {booking.guest.lastName}</div>
-                <div className="text-sm text-gray-500">{booking.numberOfGuests || 1} Guests</div>
-              </div>
-              <div>
-                <div className="font-medium">{booking.bookingNumber}</div>
-                <div className="text-sm text-gray-500">
-                  {formatDateRange(booking.checkInDate, booking.checkOutDate)}
-                </div>
-              </div>
-              <div>
-                <div>{booking.numberOfRooms || 1} {booking.numberOfRooms === 1 ? 'Room' : 'Rooms'}</div>
-                <div className="text-sm text-gray-500">{nights} {nights === 1 ? 'Night' : 'Nights'}</div>
-              </div>
-              <div>
-                <div>{booking.paymentStatus === "PAID" ? "Paid" : "Pay at Hotel"}</div>
-                <div className="text-sm text-gray-500">${Number(booking.totalAmount).toLocaleString()}</div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className={getStatusColor(booking.bookingStatus)}>
-                  {booking.bookingStatus.replace("_", " ")}
-                </span>
-                <Button variant="ghost" size="icon" onClick={(e) => {
-                  e.stopPropagation()
-                  printBookingDetails(booking, calculateNights)
-                }}>
-                  <Printer className="h-4 w-4" />
-                </Button>
-              </div>
-            </motion.div>
-          )
-        })}
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case "CONFIRMED":
+          return "text-green-500"
+        case "CHECKED_IN":
+          return "text-blue-500"
+        case "CHECKED_OUT":
+          return "text-purple-500"
+        case "CANCELLED":
+          return "text-red-500"
+        case "NO_SHOW":
+          return "text-yellow-500"
+        default:
+          return "text-gray-500"
+      }
+    }
+
+    return (
+      <motion.div
+  key={booking.id}
+  whileHover={{ scale: 1.01 }}
+  className="rounded-lg border bg-white shadow-sm p-4 cursor-pointer space-y-4"
+  onClick={() => onSelectBooking(booking.id)}
+>
+  {/* Guest Name and Status */}
+  <div className="flex justify-between items-center border-b pb-2">
+    <div>
+      <div className="text-base font-semibold">
+        {booking.guest.firstName} {booking.guest.lastName}
       </div>
+      <div className="text-sm text-gray-500">
+        {booking.numberOfGuests || 1} Guest(s)
+      </div>
+    </div>
+    <span className={`text-sm font-medium ${getStatusColor(booking.bookingStatus)}`}>
+      {/* ✅ Check In / Check Out Buttons */}
+      {(booking.bookingStatus === "CONFIRMED" ) && (
+    <div className="flex justify-end">
+      <Button
+        variant="outline"
+        size="sm"
+        className={booking.bookingStatus === "CONFIRMED" ? "text-green-600 border-green-600" : "text-blue-600 border-blue-600"}
+        onClick={(e) => {
+          
+          e.stopPropagation()
+          if (booking.bookingStatus === "CONFIRMED") {
+            // ✅ Call your check-in logic here
+            console.log(`Check in booking: ${booking.id}`)
+          } else if (booking.bookingStatus === "CHECKED_IN") {
+            // ✅ Call your check-out logic here
+            console.log(`Check out booking: ${booking.id}`)
+          }
+        }}
+      >
+        {booking.bookingStatus === "CONFIRMED" ? "Check In" : "Check Out"}
+      </Button>
+    </div>
+  )}
+    </span>
+  </div>
+
+  
+  
+
+  {/* Row-wise Table Style Layout */}
+  <div className="grid grid-cols-2 gap-y-2 text-sm text-gray-700 pt-2">
+    <div className="text-gray-500 font-medium">Booking ID</div>
+    <div>{booking.bookingNumber}</div>
+
+    <div className="text-gray-500 font-medium">Payment</div>
+    <div>
+      {booking.paymentStatus === "PAID" ? "Paid" : "Pay at Hotel"}
+      <div className="text-xs text-gray-400">
+        ₹{Number(booking.totalAmount).toLocaleString("en-IN")}
+      </div>
+    </div>
+
+    <div className="text-gray-500 font-medium">{nights} Night(s)</div>
+    <div>
+      <div className="text-xs text-gray-400">
+        {formatDateRange(booking.checkInDate, booking.checkOutDate)}
+      </div>
+    </div>
+
+    <div className="text-gray-500 font-medium">Booking Info</div>
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-gray-400">Click to view / print</span>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={(e) => {
+          e.stopPropagation()
+          printBookingDetails(booking, calculateNights)
+        }}
+      >
+        <Printer className="h-4 w-4" />
+      </Button>
+    </div>
+
+    {/* Room Rows */}
+    {booking.roomTypeBookings?.flatMap((rtb) =>
+      Array.from({ length: rtb.numberOfRooms || 0 }).map((_, idx) => (
+        <React.Fragment key={`${rtb.roomType}-${idx}`}>
+          <div className="text-gray-500 font-medium">{`Room ${idx + 1}`}</div>
+          <div className="uppercase">{rtb.roomType}</div>
+        </React.Fragment>
+      ))
+    )}
+  </div>
+</motion.div>
+
+    )
+  })}
+</div>
+
     </motion.div>
   )
 }
@@ -598,11 +684,11 @@ function printBookingDetails(booking: Booking, calculateNights: (checkIn: string
           </div>
           <div class="info-row">
             <div class="label">Room Type:</div>
-            <div class="value">${booking.roomType}</div>
+            <div class="value">${booking.roomTypeBookings.roomType}</div>
           </div>
           <div class="info-row">
             <div class="label">Number of Rooms:</div>
-            <div class="value">${booking.numberOfRooms || 1}</div>
+            <div class="value">${booking.roomTypeBookings.noOfRooms || 1}</div>
           </div>
           <div class="info-row">
             <div class="label">Number of Guests:</div>

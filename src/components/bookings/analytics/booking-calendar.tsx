@@ -5,6 +5,7 @@ import { format, isSameDay, parseISO } from "date-fns"
 import { ChevronDown } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Booking, OccupancyData } from "./booking-analytics"
+import { useRoomMap } from "@/components/rooms/use-room-map"
 
 interface RoomWithBookings {
   roomNumber: string;
@@ -20,6 +21,7 @@ interface BookingCalendarProps {
   currentDate: Date;
   isLoading: boolean;
   onBookingClick: (booking: Booking) => void;
+  hotelId:string|undefined;
 }
 
 export default function BookingCalendar({
@@ -27,32 +29,47 @@ export default function BookingCalendar({
   occupancyData,
   isLoading,
   onBookingClick,
+  hotelId
 }: BookingCalendarProps) {
   const [expandedRoomTypes, setExpandedRoomTypes] = useState<string[]>([])
+  const { roomNumberMap, floorMap, loading: roomLoading } = useRoomMap(hotelId)
+
 
   // Group rooms by type
   const roomsByType: Record<string, RoomWithBookings[]> = bookings.reduce((acc, booking) => {
-    const roomType = booking.roomType || "Unknown"
-    if (!acc[roomType]) {
-      acc[roomType] = []
-    }
+  const roomType = booking.roomType || "Unknown"
 
-    // Check if room is already in the array
-    const existingRoom = acc[roomType].find((r) => r.roomNumber === booking.roomNumber)
+  if (!acc[roomType]) {
+    acc[roomType] = []
+  }
+
+  // If booking has multiple roomIds
+  const roomIds = booking.roomIds || [] // <-- Use roomIds instead of roomId
+
+  for (const roomId of roomIds) {
+    // Optional: derive roomNumber/floor from roomId if not directly available
+    const roomNumber = roomNumberMap?.[roomId] || `#${roomId}` // Fallback to "#roomId"
+    const floor = floorMap?.[roomId] || 0
+
+    // Check if this room already exists under this type
+    let existingRoom = acc[roomType].find((r) => r.roomId === roomId)
+
     if (!existingRoom) {
       acc[roomType].push({
-        roomNumber: booking.roomNumber,
-        roomId: booking.roomId,
-        floor: booking.floor,
+        roomId,
+        roomNumber,
+        floor,
         type: roomType,
         bookings: [booking],
       })
     } else {
       existingRoom.bookings.push(booking)
     }
+  }
 
-    return acc
-  }, {} as Record<string, RoomWithBookings[]>)
+  return acc
+}, {} as Record<string, RoomWithBookings[]>)
+
 
   // Sort rooms by number within each type
   Object.keys(roomsByType).forEach((type) => {

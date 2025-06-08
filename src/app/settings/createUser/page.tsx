@@ -119,7 +119,7 @@ export default function AddUserPage() {
               <SelectValue placeholder="Select Role" />
             </SelectTrigger>
             <SelectContent className="z-[9999]">
-              {["HOTEL_ADMIN", "STAFF", "RECEPTIONIST", "HOUSEKEEPER", "MAINTENANCE"].map((r) => (
+              {["SUPERADMIN","HOTEL_ADMIN", "STAFF", "RECEPTIONIST", "HOUSEKEEPER", "MAINTENANCE"].map((r) => (
                 <SelectItem key={r} value={r}>{r}</SelectItem>
               ))}
             </SelectContent>

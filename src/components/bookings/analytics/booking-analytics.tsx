@@ -8,12 +8,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import BookingCalendar from "./booking-calendar"
-import BookingDetails from "./booking-details"
 import { useHotelContext } from "@/providers/hotel-provider"
 import { useSession } from "next-auth/react"
 import { generateMockBookings } from "./mock-data"
+import { BookingDetails } from "@/components/dashbaord/booking-details"
 
-// Define TypeScript interfaces
 export interface Guest {
   firstName: string;
   lastName: string;
@@ -58,11 +57,11 @@ export interface Booking {
   specialRequests?: string;
   cancellationDate?: string;
   cancellationReason?: string;
-  roomId?: string;
+  roomIds?: string[];
   numberOfGuests: number;
   numberOfRooms?: number;
-  roomNumber: string;  // Made required
-  floor: number;       // Made required
+  roomNumber: string;
+  floor: number;
   externalReference?: string;
   children?: number;
   pendingAmount?: number;
@@ -183,26 +182,23 @@ export default function BookingAnalytics() {
 
   // Batch fetch room details for multiple bookings
   const fetchAllRoomDetails = async (bookingsData: Booking[]) => {
-    // Get unique room IDs that need to be fetched
-    const roomIds = [...new Set(bookingsData
-      .filter(booking => booking.roomId && !roomDetails[booking.roomId])
-      .map(booking => booking.roomId as string)
-    )]
+  const roomIds = [...new Set(
+    bookingsData.flatMap(booking => (booking.roomIds || [])).filter(id => !roomDetails[id])
+  )]
 
-    if (roomIds.length === 0) return
+  if (roomIds.length === 0) return
 
-    // Fetch details for each room and update the state
-    const newRoomDetails = { ...roomDetails }
-    
-    await Promise.all(roomIds.map(async (roomId) => {
-      const roomDetail = await fetchRoomDetails(roomId)
-      if (roomDetail) {
-        newRoomDetails[roomId] = roomDetail
-      }
-    }))
+  const newRoomDetails = { ...roomDetails }
 
-    setRoomDetails(newRoomDetails)
-  }
+  await Promise.all(roomIds.map(async (roomId) => {
+    const roomDetail = await fetchRoomDetails(roomId)
+    if (roomDetail) {
+      newRoomDetails[roomId] = roomDetail
+    }
+  }))
+
+  setRoomDetails(newRoomDetails)
+}
 
   const fetchBookings = async () => {
     setIsLoading(true)
@@ -270,27 +266,22 @@ export default function BookingAnalytics() {
       if (result.data && result.data.bookings) {
         // Process bookings to include room information
         const bookingsData = result.data.bookings.map((booking: any) => {
-          // If we already have room details cached, use them
-          const room = booking.roomId && roomDetails[booking.roomId] 
-            ? roomDetails[booking.roomId]
-            : rooms.find(r => r.id === booking.roomId) || {
-                roomNumber: "Unknown",
-                floor: 1
-              }
+  const primaryRoomId = (booking.roomIds && booking.roomIds.length > 0) ? booking.roomIds[0] : null
+  const room = primaryRoomId && roomDetails[primaryRoomId]
+    ? roomDetails[primaryRoomId]
+    : rooms.find(r => r.id === primaryRoomId) || { roomNumber: "Unknown", floor: 1 }
 
-          // Ensure all required fields are present
-          return {
-            ...booking,
-            roomNumber: room.roomNumber || "Unknown",
-            floor: room.floor || 1,
-            checkInDate: booking.checkInDate,
-            checkOutDate: booking.checkOutDate,
-            // Ensure these fields exist (even with default values) for type compatibility
-            paymentStatus: booking.paymentStatus || "PENDING",
-            totalAmount: booking.totalAmount || 0,
-            numberOfGuests: booking.numberOfGuests || 1
-          } as Booking
-        })
+  return {
+    ...booking,
+    roomNumber: room.roomNumber || "Unknown",
+    floor: room.floor || 1,
+    checkInDate: booking.checkInDate,
+    checkOutDate: booking.checkOutDate,
+    paymentStatus: booking.paymentStatus || "PENDING",
+    totalAmount: booking.totalAmount || 0,
+    numberOfGuests: booking.numberOfGuests || 1
+  } as Booking
+})
 
         setBookings(bookingsData)
         
@@ -334,86 +325,87 @@ export default function BookingAnalytics() {
   }
 
   const fetchRooms = async () => {
-    try {
-      const response = await fetch("http://localhost:8000/graphql", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-        },
-        body: JSON.stringify({
-          query: `
-            query {
-              rooms(
-                hotelId: "${selectedHotel?.id}"
-                limit: 100
-                offset: 0
-              ) {
-                id
-                hotelId
-                roomNumber
-                roomType
-                bedType
-                pricePerNight
-                status
-                amenities
-                isActive
-                createdAt
-                updatedAt
-                __typename
-                lastCleaned
-                maxOccupancy
-                baseOccupancy
-                extraBedPrice
-                lastMaintained
-                extraBedAllowed
-                maintenanceNotes
-                floor
-                roomSize
-              }
+  try {
+    const response = await fetch("http://localhost:8000/graphql", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
+      },
+      body: JSON.stringify({
+        query: `
+          query {
+            rooms(
+              hotelId: "${selectedHotel?.id}"
+              limit: 100
+              offset: 0
+            ) {
+              id
+              hotelId
+              roomNumber
+              roomType
+              bedType
+              pricePerNight
+              status
+              amenities
+              isActive
+              createdAt
+              updatedAt
+              __typename
+              lastCleaned
+              maxOccupancy
+              baseOccupancy
+              extraBedPrice
+              lastMaintained
+              extraBedAllowed
+              maintenanceNotes
+              floor
+              roomSize
             }
-          `
-        }),
-      })
+          }
+        `
+      }),
+    });
 
-      const result = await response.json()
-      
-      if (result.data && result.data.rooms) {
-        // Ensure all rooms have the required floor property
-        const processedRooms = result.data.rooms.map((room: any) => ({
-          ...room,
-          floor: room.floor || 1
-        }))
-        setRooms(processedRooms)
-        
-        // Update booking room information with the latest data
-        if (bookings.length > 0) {
-          setBookings(bookings.map(booking => {
-            if (booking.roomId) {
-              const room = processedRooms.find((r: Room) => r.id === booking.roomId)
-              if (room) {
-                return {
-                  ...booking,
-                  roomNumber: room.roomNumber,
-                  floor: room.floor
-                }
-              }
-            }
-            return booking
-          }))
-        }
-      } else {
-        console.error("Error fetching rooms: No data in response", result)
+    const result = await response.json();
+
+    if (result.data && result.data.rooms) {
+      const processedRooms = result.data.rooms.map((room: any) => ({
+        ...room,
+        floor: room.floor || 1
+      }));
+
+      setRooms(processedRooms);
+
+      if (bookings.length > 0) {
+        setBookings(bookings.map(booking => {
+          if (booking.roomIds && booking.roomIds.length > 0) {
+            const matchedRooms = booking.roomIds
+              .map((id: string) => processedRooms.find((r: any) => r.id === id))
+              .filter(Boolean);
+
+            return {
+              ...booking,
+              roomNumbers: matchedRooms.map(r => r.roomNumber),
+              floors: matchedRooms.map(r => r.floor)
+            };
+          }
+          return booking;
+        }));
       }
-    } catch (error) {
-      console.error("Error fetching rooms:", error)
-      toast({
-        title: "Error",
-        description: "Failed to fetch room information",
-        variant: "destructive"
-      })
+    } else {
+      console.error("Error fetching rooms: No data in response", result);
     }
+  } catch (error) {
+    console.error("Error fetching rooms:", error);
+    toast({
+      title: "Error",
+      description: "Failed to fetch room information",
+      variant: "destructive"
+    });
   }
+};
+
 
   const handlePreviousMonth = () => {
     const newDate = new Date(currentDate)
@@ -432,21 +424,21 @@ export default function BookingAnalytics() {
   }
 
   const handleBookingClick = (booking: Booking) => {
-    setSelectedBooking(booking)
-    setShowBookingDetails(true)
-    
-    // If the booking has a roomId but detailed info isn't loaded yet, fetch it
-    if (booking.roomId && !roomDetails[booking.roomId]) {
-      fetchRoomDetails(booking.roomId).then(room => {
-        if (room) {
-          setRoomDetails(prev => ({
-            ...prev,
-            [booking.roomId as string]: room
-          }))
-        }
-      })
-    }
+  setSelectedBooking(booking)
+  setShowBookingDetails(true)
+
+  const fetchMissingRoomDetails = async () => {
+    const missing = (booking.roomIds || []).filter(id => !roomDetails[id])
+    const fetchedRooms = await Promise.all(missing.map(fetchRoomDetails))
+    const newRoomDetails = { ...roomDetails }
+    missing.forEach((id, i) => {
+      if (fetchedRooms[i]) newRoomDetails[id] = fetchedRooms[i]!
+    })
+    setRoomDetails(newRoomDetails)
   }
+
+  fetchMissingRoomDetails()
+}
 
   const handleCloseDetails = () => {
     setShowBookingDetails(false)
@@ -602,6 +594,7 @@ export default function BookingAnalytics() {
             currentDate={currentDate}
             isLoading={isLoading}
             onBookingClick={handleBookingClick}
+            hotelId = {selectedHotel?.id}
           />
         </CardContent>
       </Card>
@@ -614,5 +607,7 @@ export default function BookingAnalytics() {
         />
       )}
     </div>
+      
+    
   )
 }

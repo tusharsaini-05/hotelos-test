@@ -85,17 +85,31 @@ export function HotelProvider({ children }: { children: React.ReactNode }) {
       
       
       const response = await fetch("http://localhost:8000/graphql", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-        },
-        body: JSON.stringify({
-          query: `
-            query {
-              hotel {
-                getHotelsByAdmin(adminId: "${userId}") {
-                  id
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${(session as any)?.accessToken || ''}`,
+  },
+  body: JSON.stringify({
+    query: `
+      query GetHotels(
+        $status: HotelStatus
+        $city: String
+        $country: String
+        $adminId: String
+        $limit: Int!
+        $offset: Int!
+      ) {
+        hotel {
+          getHotels(
+            status: $status
+            city: $city
+            country: $country
+            adminId: $adminId
+            limit: $limit
+            offset: $offset
+          ) {
+            id
                   name
                   description
                   status
@@ -108,14 +122,31 @@ export function HotelProvider({ children }: { children: React.ReactNode }) {
                   images
                   createdAt
                   updatedAt
+                  address
+                  state
+                  contactPhone
+                  contactEmail
+                  starRating
                   floorCount
-			            roomCount
-                }
-              }
-            }
-          `
-        }),
-      })
+                  roomCount
+                  city
+                  country
+                  website
+                  description
+          }
+        }
+      }
+    `,
+    variables: {
+      status: "ACTIVE",
+      city: null,
+      country: null,
+      adminId: null,
+      limit: 100,
+      offset: 0,
+    },
+  }),
+});
 
       const result = await response.json()
       console.log("GraphQL response:", result)
@@ -124,12 +155,12 @@ export function HotelProvider({ children }: { children: React.ReactNode }) {
         throw new Error(result.errors[0].message || "Failed to fetch hotels")
       }
 
-      if (!result.data || !result.data.hotel || !result.data.hotel.getHotelsByAdmin) {
+      if (!result.data || !result.data.hotel || !result.data.hotel.getHotels) {
         console.error("Unexpected response structure:", result)
         throw new Error("Unexpected API response structure")
       }
 
-      const fetchedHotels = result.data.hotel.getHotelsByAdmin
+      const fetchedHotels = result.data.hotel.getHotels
       setUserHotels(fetchedHotels)
 
       // If no hotel is selected yet, select the first one
@@ -229,7 +260,7 @@ export function HotelProvider({ children }: { children: React.ReactNode }) {
       }
     `,
     variables: {
-      status: null,
+      status: "ACTIVE",
       city: null,
       country: null,
       adminId: null,
