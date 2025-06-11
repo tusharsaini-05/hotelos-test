@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react"
 import RoomBlock from "./roomAssignmentBlock"
-
-type Room = {
+import { RoomType } from "@/graphql/types/booking"
+export type Room = {
   id: string
   roomNumber: string
   roomType: string
@@ -32,18 +32,22 @@ type Room = {
   guestName?: string | null
 }
 
-type RoomGridProps = {
+type AssignRoomProps = {
   hotelId: string
   floorCount: number
-  roomType:string
-  onAssignRoom: (room: Room) => void
+  roomType:RoomType
+  bookingId:string
+//  onAssignRoom: (room: Room) => void
 }
 
-export default function RoomGrid({ hotelId, floorCount,roomType, onAssignRoom }: RoomGridProps) {
+export default function RoomGrid({ hotelId,roomType,bookingId /*onAssignRoom*/ }: AssignRoomProps) {
+  
+  const [selectedRoom,setSelectedRoom] = useState<Room>();
   const [rooms, setRooms] = useState<Room[]>([])
   const [isLoading, setIsLoading] = useState(true)
-
+  
   useEffect(() => {
+  
     const fetchRooms = async () => {
       if (!hotelId) return
       
@@ -54,7 +58,7 @@ export default function RoomGrid({ hotelId, floorCount,roomType, onAssignRoom }:
           query GetRooms {
             rooms(
               hotelId: "${hotelId}"
-              roomType: "${roomType}"
+              roomType: ${roomType}
               limit: 100
             ) {
               id
@@ -147,12 +151,14 @@ export default function RoomGrid({ hotelId, floorCount,roomType, onAssignRoom }:
     {} as Record<number, Room[]>,
   )
 
+  
+
   return (
     <div className="space-y-8">
       {Object.entries(roomsByFloor)
         .sort(([floorA], [floorB]) => Number(floorB) - Number(floorA)) // Sort floors in descending order
         .map(([floor, floorRooms]) => (
-          <div key={floor} className="space-y-2">
+          <div key={`floor-${floor}`} className="space-y-2">
             <h3 className="text-lg font-medium">Floor {floor}</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8 gap-4">
               {floorRooms
@@ -161,7 +167,10 @@ export default function RoomGrid({ hotelId, floorCount,roomType, onAssignRoom }:
                   <RoomBlock 
                     key={room.id} 
                     room={room} 
-                    onCreateBooking={() => onAssignRoom(room)} 
+                    bookingId={bookingId}
+                    roomType={roomType}
+                   // onAssignmentSuccess={() => refreshData()}
+                   // handleAssignRoom={() => handleAssignRoom(room)} 
                   />
                 ))}
             </div>

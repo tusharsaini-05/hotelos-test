@@ -10,6 +10,26 @@ import { useToast } from "@/components/ui/use-toast"
 import { format } from "date-fns"
 import { useHotelContext } from "@/providers/hotel-provider"
 import React from "react"
+import { Booking,RoomTypeBooking, } from "@/graphql/types/booking"
+import RoomAssignmentSection from "./roomAssignmentSection"
+import { gql, useMutation } from "@apollo/client"
+
+
+const CHECK_IN_BOOKING_MUTATION = gql`
+  mutation CheckInBooking($bookingId: String!) {
+    checkInBooking(bookingId: $bookingId) {
+      id
+      bookingStatus
+      checkInTime
+      # Include other fields you need from the Booking type
+    }
+  }
+`;
+const CHECK_OUT_BOOKING_MUTATION = gql`
+  mutation CheckOutBooking($bookingId: String!) {
+    checkoutBooking(bookingId: $bookingId) 
+  }
+`;
 
 
 interface BookingsSectionProps {
@@ -20,6 +40,7 @@ interface BookingsSectionProps {
   showDownload?: boolean
   onDownload?: () => void
   calculateNights: (checkInDate: string, checkOutDate: string) => number
+  countAssignedRoomsInBooking: (booking:Booking) => number
   formatDateRange: (checkIn: string, checkOut: string) => string
 }
 enum RoomType{
@@ -38,34 +59,7 @@ enum BookingStatus{
   "NO_SHOW" = "no_show"
 }
 
-interface RoomTypeBookings{
-  roomType:string,
-  noOfRooms:number,
-  roomIds:[String]
-}
 
-interface Booking {
-  id: string
-  bookingNumber: string
-  guest: {
-    firstName: string
-    lastName: string
-    email: string
-  }
-  checkInDate: string
-  checkOutDate: string
-  numberOfGuests: number
-  roomTypeBookings:{
-    flatMap(arg0: (rtb: { numberOfRooms: any; roomType: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | null | undefined> | null | undefined }) => React.JSX.Element[]): React.ReactNode
-    roomType:string,
-    noOfRooms:number,
-    roomIds:[String]
-  }
-  bookingStatus: string
-  paymentStatus: string
-  totalAmount: number
-  createdAt: string
-}
 
 interface BookingsListProps {
   onSelectBooking: (bookingId: string) => void
@@ -74,7 +68,8 @@ interface BookingsListProps {
 type BookingCategory = 'confirmed' | 'checked_in' | 'checked_out';
 
 export function BookingsList({ onSelectBooking }: BookingsListProps) {
-  const [activeTab, setActiveTab] = useState<BookingCategory>("confirmed")
+  const [activeTab, setActiveTab] = useState<'confirmed' | 'checked_in' | 'checked_out'>('confirmed')
+
   const [bookings, setBookings] = useState<{
     confirmed: Booking[];
     checked_in: Booking[];
@@ -90,7 +85,6 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
   const { toast } = useToast()
   const {selectedHotel} = useHotelContext()
   // GraphQL endpoint
-
 
 
   const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT || 'http://localhost:8000/graphql'
@@ -128,6 +122,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
           query: `
             query bookings($hotelId:String){
                 bookings(hotelId:$hotelId){
+                  id
                   hotelId
                   bookingNumber
                   guest{
@@ -138,6 +133,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                   roomTypeBookings{
                     roomType
                     numberOfRooms
+                    roomIds
                   }
                   checkInDate 
                   checkOutDate
@@ -281,6 +277,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
       }
       
       setBookings(categorizedResults)
+      console.log(bookings)
       
       toast({
         title: "Search Results",
@@ -322,9 +319,24 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
     return checkInDateStr > todayStr
   })
   
+  // Calculate booking room
+
+  const countAssignedRoomsInBooking = (booking: Booking): number => {
+  return booking.roomTypeBookings.reduce(
+    (total, rtb) => total + (rtb.roomIds?.length || 0),
+    0
+  );
+};
+
   // Calculate room counts
   const calculateRooms = (bookingsList: Booking[]) => {
-  return bookingsList.reduce((total, booking) => total + booking.roomTypeBookings.noOfRooms, 0);
+  return bookingsList.reduce((total, booking) => {
+    const roomsInBooking = booking.roomTypeBookings.reduce(
+      (sum, rtb) => sum + rtb.numberOfRooms,
+      0
+    );
+    return total + roomsInBooking;
+  }, 0);
 };
   
   const todayRoomCount = calculateRooms(todayBookings)
@@ -425,13 +437,13 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
       </div>
       <Tabs value={activeTab} onValueChange={handleTabChange} className="mb-6">
         <TabsList className="grid w-full max-w-md grid-cols-3">
-          <TabsTrigger value="upcoming" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
+          <TabsTrigger value="confirmed" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
             confirmed ({bookings.confirmed.length})
           </TabsTrigger>
-          <TabsTrigger value="inhouse" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">
+          <TabsTrigger value="checked_in" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">
             checked_in ({bookings.checked_in.length})
           </TabsTrigger>
-          <TabsTrigger value="completed" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+          <TabsTrigger value="checked_out" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
             checked_out ({bookings.checked_out.length})
           </TabsTrigger>
         </TabsList>
@@ -450,6 +462,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
               bookings={upcomingBookings}
               onSelectBooking={onSelectBooking}
               calculateNights={calculateNights}
+              countAssignedRoomsInBooking={countAssignedRoomsInBooking}
               formatDateRange={formatDateRange}
             />
           )}
@@ -463,6 +476,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
               showDownload
               onDownload={handleDownloadTodaysArrivals}
               calculateNights={calculateNights}
+              countAssignedRoomsInBooking={countAssignedRoomsInBooking}
               formatDateRange={formatDateRange}
             />
           )}
@@ -474,6 +488,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
               bookings={previousBookings}
               onSelectBooking={onSelectBooking}
               calculateNights={calculateNights}
+              countAssignedRoomsInBooking={countAssignedRoomsInBooking}
               formatDateRange={formatDateRange}
             />
           )}
@@ -498,8 +513,90 @@ function BookingsSection({
   showDownload = false,
   onDownload,
   calculateNights,
+  countAssignedRoomsInBooking,
   formatDateRange
 }: BookingsSectionProps) {
+  const { toast } = useToast();
+  const [checkInBooking] = useMutation(CHECK_IN_BOOKING_MUTATION);
+  const[checkOutBooking] = useMutation(CHECK_OUT_BOOKING_MUTATION)
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const handleCheckIn = async (bookingId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingId(bookingId);
+    
+    try {
+      const { data } = await checkInBooking({
+        variables: { bookingId },
+        update: (cache, { data }) => {
+          if (data?.checkInBooking) {
+            // Update the cache if needed
+            cache.modify({
+              id: cache.identify(data.checkInBooking),
+              fields: {
+                bookingStatus: () => "CHECKED_IN",
+                checkInTime: () => new Date().toISOString(),
+              },
+            });
+          }
+        },
+      });
+
+      if (data?.checkInBooking) {
+        toast({
+          title: "Success",
+          description: "Booking checked in successfully",
+          variant: "default",
+        });
+        // Refresh data or update local state as needed
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to check in booking",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingId(null);
+    }
+  };
+  const handleCheckOut = async (bookingId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingId(bookingId);
+    
+    try {
+      const { data } = await checkOutBooking({
+        variables: { bookingId },
+        update: (cache, { data }) => {
+          if (data?.checkOutBooking?.success) {
+            cache.modify({
+              id: `Booking:${bookingId}`,
+              fields: {
+                bookingStatus: () => "CHECKED_OUT",
+                checkOutTime: () => new Date().toISOString(),
+              },
+            });
+          }
+        },
+      });
+
+      if (data?.checkOutBooking?.success) {
+        toast({
+          title: "Success",
+          description: "Booking checked out successfully",
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to check out booking",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingId(null);
+    }
+  };
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -559,29 +656,41 @@ function BookingsSection({
       </div>
     </div>
     <span className={`text-sm font-medium ${getStatusColor(booking.bookingStatus)}`}>
-      {/* ✅ Check In / Check Out Buttons */}
-      {(booking.bookingStatus === "CONFIRMED" ) && (
-    <div className="flex justify-end">
-      <Button
-        variant="outline"
-        size="sm"
-        className={booking.bookingStatus === "CONFIRMED" ? "text-green-600 border-green-600" : "text-blue-600 border-blue-600"}
-        onClick={(e) => {
-          
-          e.stopPropagation()
-          if (booking.bookingStatus === "CONFIRMED") {
-            // ✅ Call your check-in logic here
-            console.log(`Check in booking: ${booking.id}`)
-          } else if (booking.bookingStatus === "CHECKED_IN") {
-            // ✅ Call your check-out logic here
-            console.log(`Check out booking: ${booking.id}`)
-          }
-        }}
-      >
-        {booking.bookingStatus === "CONFIRMED" ? "Check In" : "Check Out"}
-      </Button>
-    </div>
-  )}
+      
+              {/* Check In/Out Button */}
+              <div className="flex justify-end">
+                {booking.bookingStatus === "CONFIRMED" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-green-600 border-green-600 hover:bg-green-50"
+                    onClick={(e) => handleCheckIn(booking.id, e)}
+                    disabled={loadingId === booking.id}
+                  >
+                    {loadingId === booking.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Check In"
+                    )}
+                  </Button>
+                )}
+
+                {booking.bookingStatus === "CHECKED_IN" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                    onClick={(e) => handleCheckOut(booking.id, e)}
+                    disabled={loadingId === booking.id}
+                  >
+                    {loadingId === booking.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Check Out"
+                    )}
+                  </Button>
+                )}
+              </div>
     </span>
   </div>
 
@@ -616,7 +725,7 @@ function BookingsSection({
         size="icon"
         onClick={(e) => {
           e.stopPropagation()
-          printBookingDetails(booking, calculateNights)
+          printBookingDetails(booking,countAssignedRoomsInBooking, calculateNights)
         }}
       >
         <Printer className="h-4 w-4" />
@@ -624,14 +733,7 @@ function BookingsSection({
     </div>
 
     {/* Room Rows */}
-    {booking.roomTypeBookings?.flatMap((rtb) =>
-      Array.from({ length: rtb.numberOfRooms || 0 }).map((_, idx) => (
-        <React.Fragment key={`${rtb.roomType}-${idx}`}>
-          <div className="text-gray-500 font-medium">{`Room ${idx + 1}`}</div>
-          <div className="uppercase">{rtb.roomType}</div>
-        </React.Fragment>
-      ))
-    )}
+     <RoomAssignmentSection booking={{ roomTypeBookings: booking.roomTypeBookings,bookingStatus:booking.bookingStatus,bookingId:booking.id }} />
   </div>
 </motion.div>
 
@@ -644,7 +746,7 @@ function BookingsSection({
 }
 
 
-function printBookingDetails(booking: Booking, calculateNights: (checkIn: string, checkOut: string) => number) {
+function printBookingDetails(booking: Booking,countAssignedRoomsInBooking:(booking:Booking) =>number, calculateNights: (checkIn: string, checkOut: string) => number) {
   const printContent = `
     <html>
       <head>
@@ -683,12 +785,8 @@ function printBookingDetails(booking: Booking, calculateNights: (checkIn: string
             <div class="value">${new Date(booking.checkOutDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
           </div>
           <div class="info-row">
-            <div class="label">Room Type:</div>
-            <div class="value">${booking.roomTypeBookings.roomType}</div>
-          </div>
-          <div class="info-row">
             <div class="label">Number of Rooms:</div>
-            <div class="value">${booking.roomTypeBookings.noOfRooms || 1}</div>
+            <div class="value">${countAssignedRoomsInBooking(booking) || 1}</div>
           </div>
           <div class="info-row">
             <div class="label">Number of Guests:</div>
