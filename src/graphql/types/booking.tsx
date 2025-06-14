@@ -30,9 +30,8 @@ export enum RoomType {
   DELUXE = "DELUXE",
   SUITE = "SUITE",
   EXECUTIVE = "EXECUTIVE",
-  PRESIDENTIAL = "PRESIDENTIAL"
+  PRESIDENTIAL = "PRESIDENTIAL",
 }
-
 
 export interface Booking {
   id: string

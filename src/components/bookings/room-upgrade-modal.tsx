@@ -1,162 +1,195 @@
 "use client"
 
 import { useState } from "react"
-import { motion } from "framer-motion"
-import { X, Loader2 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Check, X } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
-// Updated interface to use bookingId instead of booking
-export interface RoomUpgradeModalProps {
+interface RoomUpgradeModalProps {
+  isOpen: boolean
   onClose: () => void
-  bookingId: string // Changed from booking to bookingId for clarity
   currentRoomType: string
+  currentPrice: number
+  bookingId: string
 }
 
-export function RoomUpgradeModal({ onClose, bookingId, currentRoomType }: RoomUpgradeModalProps) {
-  const [selectedRoom, setSelectedRoom] = useState(currentRoomType)
-  const [loading, setLoading] = useState(false)
+// Mock upgrade options
+const upgradeOptions = [
+  {
+    id: "upgrade-1",
+    roomType: "Deluxe Double",
+    originalPrice: 2648,
+    upgradePrice: 513,
+    description: "Upgrade to a more spacious room with premium amenities",
+    features: ["Larger Room (32 sqm)", "Premium Toiletries", "Bathtub", "City View"],
+    image: "/placeholder.svg?height=120&width=200",
+  },
+  {
+    id: "upgrade-2",
+    roomType: "Executive Suite",
+    originalPrice: 3450,
+    upgradePrice: 1315,
+    description: "Luxury suite with separate living area and panoramic views",
+    features: [
+      "Separate Living Area",
+      "Panoramic Views",
+      "Premium Minibar",
+      "Nespresso Machine",
+      "Bathrobe & Slippers",
+    ],
+    image: "/placeholder.svg?height=120&width=200",
+  },
+]
+
+export default function RoomUpgradeModal({
+  isOpen,
+  onClose,
+  currentRoomType,
+  currentPrice,
+  bookingId,
+}: RoomUpgradeModalProps) {
+  const [selectedUpgrade, setSelectedUpgrade] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
   const { toast } = useToast()
-  
-  // GraphQL endpoint
-  const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT || 'http://localhost:8000/graphql'
-  
-  // Room upgrade options with prices
-  const roomOptions = [
-    { value: "Edited Single Bed", label: "Edited Single Bed (2 Avail)", priceChange: 0 },
-    { value: "Premium Single Bed", label: "Premium Single Bed (2 Avail)", priceChange: 100 },
-    { value: "Standard Double Room", label: "Standard Double Room (4 Avail)", priceChange: 150 },
-    { value: "Deluxe Room", label: "Deluxe Room (1 Avail)", priceChange: 250 }
-  ]
-  
-  const handleRoomChange = (value: string) => {
-    setSelectedRoom(value)
-  }
-  
-  const handleUpgrade = async () => {
-    // Only proceed if room type actually changed
-    if (selectedRoom === currentRoomType) {
-      onClose()
-      return
-    }
-    
-    setLoading(true)
-    try {
-      const selectedOption = roomOptions.find(option => option.value === selectedRoom)
-      const priceChange = selectedOption?.priceChange || 0
-      
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query: `
-            mutation ChangeRoomType($bookingId: ID!, $newRoomType: String!, $addCharge: Boolean, $amount: Float) {
-              changeRoomType(
-                bookingId: $bookingId
-                newRoomType: $newRoomType
-                addCharge: $addCharge
-                amount: $amount
-              ) {
-                id
-                bookingNumber
-                roomType
-                totalAmount
-                roomCharges {
-                  description
-                  amount
-                  chargeDate
-                }
-              }
-            }
-          `,
-          variables: { 
-            bookingId, 
-            newRoomType: selectedRoom,
-            addCharge: priceChange > 0,
-            amount: priceChange
-          }
-        }),
-      })
-      
-      const result = await response.json()
-      
-      if (result.errors) {
-        throw new Error(result.errors[0].message)
-      }
-      
+
+  const handleUpgrade = () => {
+    if (!selectedUpgrade) return
+
+    setIsProcessing(true)
+
+    // Simulate API call
+    setTimeout(() => {
+      setIsProcessing(false)
       toast({
-        title: "Room Upgraded",
-        description: `Successfully changed room to ${selectedRoom}${priceChange > 0 ? ` with additional charge of $${priceChange}` : ''}.`,
+        title: "Room Upgraded Successfully",
+        description: `Booking ${bookingId} has been upgraded to ${upgradeOptions.find((option) => option.id === selectedUpgrade)?.roomType}`,
       })
-      
       onClose()
-    } catch (error) {
-      console.error("Error upgrading room:", error)
-      toast({
-        title: "Error",
-        description: "Failed to upgrade room. Please try again.",
-        variant: "destructive"
-      })
-    } finally {
-      setLoading(false)
-    }
+    }, 1500)
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95 }}
-        animate={{ scale: 1 }}
-        exit={{ scale: 0.95 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-lg bg-white p-6"
-      >
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Select New Room Category</h2>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        
-        <RadioGroup defaultValue={currentRoomType} onValueChange={handleRoomChange}>
-          <div className="space-y-4">
-            {roomOptions.map((option) => (
-              <div key={option.value} className="rounded-lg border p-4">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value={option.value} id={option.value} />
-                  <Label htmlFor={option.value}>{option.label}</Label>
-                  <span className="ml-auto text-sm text-gray-500">
-                    {option.priceChange === 0 ? 
-                      '$0 Extra' : 
-                      `$${option.priceChange} Extra`}
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="text-xl">Upgrade Room</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6">
+          <div className="bg-slate-50 p-4 rounded-md">
+            <h3 className="font-medium mb-2">Current Room</h3>
+            <div className="flex justify-between">
+              <div>
+                <p className="font-medium">{currentRoomType}</p>
+                <p className="text-sm text-muted-foreground">Booking ID: {bookingId}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-medium">₹{currentPrice.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">per night</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-medium mb-3">Available Upgrades</h3>
+            <div className="space-y-4">
+              {upgradeOptions.map((option) => (
+                <div
+                  key={option.id}
+                  className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                    selectedUpgrade === option.id ? "border-green-500 bg-green-50" : "hover:border-slate-400"
+                  }`}
+                  onClick={() => setSelectedUpgrade(option.id)}
+                >
+                  <div className="flex gap-4">
+                    <div className="w-[120px] h-[80px] rounded-md overflow-hidden">
+                      <img
+                        src={option.image || "/placeholder.svg"}
+                        alt={option.roomType}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-medium">{option.roomType}</h4>
+                          <p className="text-sm text-muted-foreground">{option.description}</p>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold">₹{option.originalPrice.toLocaleString()}</div>
+                          <Badge className="bg-green-100 text-green-800 hover:bg-green-200">
+                            +₹{option.upgradePrice} upgrade
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {option.features.map((feature, index) => (
+                          <Badge key={index} variant="outline" className="flex items-center gap-1">
+                            <Check className="h-3 w-3" /> {feature}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {selectedUpgrade === option.id && (
+                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-500 text-white">
+                        <Check className="h-4 w-4" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-slate-50 p-4 rounded-md">
+            <h3 className="font-medium mb-2">Upgrade Summary</h3>
+            {selectedUpgrade ? (
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Current Room Price:</span>
+                  <span>₹{currentPrice.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Upgrade Fee:</span>
+                  <span>
+                    +₹{upgradeOptions.find((option) => option.id === selectedUpgrade)?.upgradePrice.toLocaleString()}
+                  </span>
+                </div>
+                <div className="border-t pt-2 flex justify-between font-medium">
+                  <span>New Room Price:</span>
+                  <span>
+                    ₹
+                    {(
+                      currentPrice + (upgradeOptions.find((option) => option.id === selectedUpgrade)?.upgradePrice || 0)
+                    ).toLocaleString()}
                   </span>
                 </div>
               </div>
-            ))}
+            ) : (
+              <p className="text-sm text-muted-foreground">Select an upgrade option to see the summary</p>
+            )}
           </div>
-        </RadioGroup>
-        
-        <div className="mt-6 flex justify-end">
-          <Button 
-            className="bg-green-500 hover:bg-green-600"
-            onClick={handleUpgrade}
-            disabled={loading || selectedRoom === currentRoomType}
-          >
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {selectedRoom === currentRoomType ? "No Change" : "Upgrade"}
-          </Button>
         </div>
-      </motion.div>
-    </motion.div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            <X className="mr-2 h-4 w-4" />
+            Cancel
+          </Button>
+          <Button
+            onClick={handleUpgrade}
+            disabled={!selectedUpgrade || isProcessing}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {isProcessing ? "Processing..." : "Confirm Upgrade"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

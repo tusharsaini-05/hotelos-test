@@ -51,30 +51,61 @@ export default function FinancialAnalytics({ data, isLoading, chartType = "line"
     )
   }
 
-  if (chartType === "pie") {
-    return (
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={data as ChartDataItem[]}
-            cx="50%"
-            cy="50%"
-            labelLine={true}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="value"
-            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-          >
-            {(data as ChartDataItem[]).map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip formatter={(value) => [`$${Number(value).toLocaleString()}`, "Revenue"]} />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
-    )
-  }
+  // In your room-analytics.tsx or financial-analytics.tsx file where pie charts are rendered
+
+if (chartType === "pie") {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <PieChart>
+        <Pie
+          data={data as ChartDataItem[]}
+          cx="50%"
+          cy="50%"
+          labelLine={false} // Remove the label lines
+          outerRadius={80}
+          fill="#8884d8"
+          dataKey="value"
+          // Custom label positioning to prevent overlap
+          label={({ name, percent, cx, cy, midAngle, innerRadius, outerRadius, index }) => {
+            // Only show label if percent is greater than 5%
+            if (percent < 0.05) return null;
+            
+            const RADIAN = Math.PI / 180;
+            // Positioning the label further from the pie
+            const radius = outerRadius * 1.2;
+            const x = cx + radius * Math.cos(-midAngle * RADIAN);
+            const y = cy + radius * Math.sin(-midAngle * RADIAN);
+            
+            return (
+              <text 
+                x={x} 
+                y={y} 
+                fill={COLORS[index % COLORS.length]}
+                textAnchor={x > cx ? 'start' : 'end'} 
+                dominantBaseline="central"
+                fontSize="12"
+                fontWeight="500"
+              >
+                {`${name}: ${(percent * 100).toFixed(0)}%`}
+              </text>
+            );
+          }}
+        >
+          {(data as ChartDataItem[]).map((entry, index) => (
+            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip formatter={(value) => [`${value}`, "Count"]} />
+        <Legend 
+          layout="horizontal" 
+          verticalAlign="bottom" 
+          align="center"
+          wrapperStyle={{ paddingTop: "20px" }}
+        />
+      </PieChart>
+    </ResponsiveContainer>
+  )
+}
 
   if (chartType === "bar") {
     return (

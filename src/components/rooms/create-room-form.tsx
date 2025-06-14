@@ -21,7 +21,7 @@ const roomTypes = [
   { value: "DELUXE", label: "Deluxe" },
   { value: "SUITE", label: "Suite" },
   { value: "EXECUTIVE", label: "Executive" },
-  { value: "PENTHOUSE", label: "Penthouse" },
+  { value: "PRESIDENTIAL", label: "Presidential" },
 ]
 
 const bedTypes = [

@@ -1,170 +1,294 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { Search, Filter, ChevronDown } from "lucide-react"
 import RoomBlock from "./room-block"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
-type Room = {
-  id: string
-  roomNumber: string
-  roomType: string
-  bedType: string
-  pricePerNight: number
-  status: string
-  amenities: string[]
-  images: string[]
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-  maintenanceNotes: string
-  extraBedAllowed: boolean
-  lastMaintained: string
-  extraBedPrice: number
-  baseOccupancy: number
-  maxOccupancy: number
-  lastCleaned: string
-  floor: number
-  hotelId: string
-  roomSize: number
-  bedCount: number
-  isAvailable?: boolean
-  checkInTime?: string | null
-  checkOutTime?: string | null
-  guestName?: string | null
+// Mock room data
+const roomData = [
+  {
+    id: "room-1",
+    name: "Superior Double",
+    description: "Spacious room with a double bed and city view",
+    price: 2135,
+    capacity: 2,
+    amenities: ["Free WiFi", "Air Conditioning", "TV", "Mini Bar", "Safe", "Hairdryer"],
+    images: ["/placeholder.svg?height=192&width=384"],
+    available: 8,
+  },
+  {
+    id: "room-2",
+    name: "Deluxe Double",
+    description: "Luxurious room with a king-size bed and premium amenities",
+    price: 2648,
+    capacity: 2,
+    amenities: ["Free WiFi", "Air Conditioning", "TV", "Mini Bar", "Safe", "Hairdryer", "Bathtub", "Balcony"],
+    images: ["/placeholder.svg?height=192&width=384"],
+    available: 5,
+  },
+  {
+    id: "room-3",
+    name: "Executive Suite",
+    description: "Elegant suite with separate living area and panoramic views",
+    price: 3450,
+    capacity: 3,
+    amenities: [
+      "Free WiFi",
+      "Air Conditioning",
+      "TV",
+      "Mini Bar",
+      "Safe",
+      "Hairdryer",
+      "Bathtub",
+      "Balcony",
+      "Living Area",
+      "Coffee Machine",
+    ],
+    images: ["/placeholder.svg?height=192&width=384"],
+    available: 2,
+  },
+  {
+    id: "room-4",
+    name: "Family Room",
+    description: "Comfortable room with two double beds, perfect for families",
+    price: 2950,
+    capacity: 4,
+    amenities: ["Free WiFi", "Air Conditioning", "TV", "Mini Bar", "Safe", "Hairdryer", "Extra Beds"],
+    images: ["/placeholder.svg?height=192&width=384"],
+    available: 3,
+  },
+  {
+    id: "room-5",
+    name: "Standard Single",
+    description: "Cozy room with a single bed, perfect for solo travelers",
+    price: 1850,
+    capacity: 1,
+    amenities: ["Free WiFi", "Air Conditioning", "TV", "Safe", "Hairdryer"],
+    images: ["/placeholder.svg?height=192&width=384"],
+    available: 10,
+  },
+]
+
+interface RoomGridProps {
+  onRoomSelection: (selectedRooms: { id: string; quantity: number; price: number }[]) => void
+  initialSelections?: { id: string; quantity: number }[]
 }
 
-type RoomGridProps = {
-  hotelId: string
-  floorCount: number
-  onCreateBooking: (room: Room) => void
-}
+export default function RoomGrid({ onRoomSelection, initialSelections = [] }: RoomGridProps) {
+  const [searchTerm, setSearchTerm] = useState("")
+  const [sortBy, setSortBy] = useState("price-asc")
+  const [filterCapacity, setFilterCapacity] = useState<number | null>(null)
+  const [filterAmenities, setFilterAmenities] = useState<string[]>([])
+  const [showFilters, setShowFilters] = useState(false)
+  const [selectedRooms, setSelectedRooms] = useState<{ id: string; quantity: number }[]>(initialSelections)
 
-export default function RoomGrid({ hotelId, floorCount, onCreateBooking }: RoomGridProps) {
-  const [rooms, setRooms] = useState<Room[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // Get all unique amenities from room data
+  const allAmenities = Array.from(new Set(roomData.flatMap((room) => room.amenities))).sort()
 
-  useEffect(() => {
-    const fetchRooms = async () => {
-      if (!hotelId) return
-      
-      setIsLoading(true)
-      try {
-        // Using the provided GraphQL query
-        const query = `
-          query GetRooms {
-            rooms(
-              hotelId: "${hotelId}"
-              limit: 100
-            ) {
-              id
-              roomNumber
-              roomType
-              bedType
-              pricePerNight
-              status
-              amenities
-              images
-              isActive
-              createdAt
-              updatedAt
-              maintenanceNotes
-              extraBedAllowed
-              lastMaintained
-              extraBedPrice
-              baseOccupancy
-              maxOccupancy
-              lastCleaned
-              floor
-              hotelId
-              roomSize
-              bedCount
-            }
-          }
-        `
-
-        // Replace this with your actual GraphQL fetch function
-        const response = await fetch('http://localhost:8000/graphql', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ query }),
-        })
-
-        const data = await response.json()
-        console.log(data)
-        if (data.data && data.data.rooms) {
-          const processedRooms = data.data.rooms.map((room: Room) => ({
-            ...room,
-            isAvailable: room.status === "AVAILABLE"
-          }))
-          setRooms(processedRooms)
-        } else {
-          console.error("Error fetching rooms: Invalid response structure", data)
-          setRooms([])
-        }
-      } catch (error) {
-        console.error("Error fetching rooms:", error)
-        setRooms([])
-      } finally {
-        setIsLoading(false)
-      }
+  // Handle room selection
+  const handleRoomSelect = (roomId: string, quantity: number) => {
+    const updatedSelections = selectedRooms.filter((room) => room.id !== roomId)
+    if (quantity > 0) {
+      updatedSelections.push({ id: roomId, quantity })
     }
+    setSelectedRooms(updatedSelections)
 
-    fetchRooms()
-  }, [hotelId])
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-2">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-muted-foreground">Loading rooms...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (rooms.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">No rooms found for this hotel.</p>
-      </div>
-    )
-  }
-
-  // Group rooms by floor
-  const roomsByFloor = rooms.reduce(
-    (acc, room) => {
-      const floor = room.floor
-      if (!acc[floor]) {
-        acc[floor] = []
+    // Pass selected rooms with price information to parent
+    const roomsWithPrices = updatedSelections.map((selection) => {
+      const roomInfo = roomData.find((room) => room.id === selection.id)
+      return {
+        id: selection.id,
+        quantity: selection.quantity,
+        price: roomInfo ? roomInfo.price : 0,
       }
-      acc[floor].push(room)
-      return acc
-    },
-    {} as Record<number, Room[]>,
-  )
+    })
+
+    onRoomSelection(roomsWithPrices)
+  }
+
+  // Filter and sort rooms
+  const filteredRooms = roomData
+    .filter((room) => {
+      // Search filter
+      const matchesSearch =
+        room.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        room.description.toLowerCase().includes(searchTerm.toLowerCase())
+
+      // Capacity filter
+      const matchesCapacity = filterCapacity ? room.capacity >= filterCapacity : true
+
+      // Amenities filter
+      const matchesAmenities =
+        filterAmenities.length === 0 || filterAmenities.every((amenity) => room.amenities.includes(amenity))
+
+      return matchesSearch && matchesCapacity && matchesAmenities
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case "price-asc":
+          return a.price - b.price
+        case "price-desc":
+          return b.price - a.price
+        case "capacity-asc":
+          return a.capacity - b.capacity
+        case "capacity-desc":
+          return b.capacity - a.capacity
+        case "availability-asc":
+          return a.available - b.available
+        case "availability-desc":
+          return b.available - a.available
+        default:
+          return 0
+      }
+    })
+
+  // Get quantity for a room
+  const getSelectedQuantity = (roomId: string) => {
+    const selection = selectedRooms.find((room) => room.id === roomId)
+    return selection ? selection.quantity : 0
+  }
+
+  // Toggle amenity filter
+  const toggleAmenity = (amenity: string) => {
+    setFilterAmenities((current) => {
+      if (current.includes(amenity)) {
+        return current.filter((a) => a !== amenity)
+      } else {
+        return [...current, amenity]
+      }
+    })
+  }
 
   return (
-    <div className="space-y-8">
-      {Object.entries(roomsByFloor)
-        .sort(([floorA], [floorB]) => Number(floorB) - Number(floorA)) // Sort floors in descending order
-        .map(([floor, floorRooms]) => (
-          <div key={floor} className="space-y-2">
-            <h3 className="text-lg font-medium">Floor {floor}</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8 gap-4">
-              {floorRooms
-                .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber))
-                .map((room) => (
-                  <RoomBlock 
-                    key={room.id} 
-                    room={room} 
-                    onCreateBooking={() => onCreateBooking(room)} 
-                  />
-                ))}
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Search and filter bar */}
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+          <Input
+            placeholder="Search rooms..."
+            className="pl-10"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="price-asc">Price: Low to High</SelectItem>
+              <SelectItem value="price-desc">Price: High to Low</SelectItem>
+              <SelectItem value="capacity-asc">Capacity: Low to High</SelectItem>
+              <SelectItem value="capacity-desc">Capacity: High to Low</SelectItem>
+              <SelectItem value="availability-asc">Availability: Low to High</SelectItem>
+              <SelectItem value="availability-desc">Availability: High to Low</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Popover open={showFilters} onOpenChange={setShowFilters}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="flex items-center gap-2">
+                <Filter size={16} />
+                Filters
+                <ChevronDown size={16} className="ml-1" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium mb-2">Guest Capacity</h4>
+                  <Select
+                    value={filterCapacity?.toString() || "any"}
+                    onValueChange={(value) => setFilterCapacity(value === "any" ? null : Number.parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Any capacity" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any capacity</SelectItem>
+                      <SelectItem value="1">1+ person</SelectItem>
+                      <SelectItem value="2">2+ people</SelectItem>
+                      <SelectItem value="3">3+ people</SelectItem>
+                      <SelectItem value="4">4+ people</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <h4 className="font-medium mb-2">Amenities</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {allAmenities.map((amenity) => (
+                      <div key={amenity} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`amenity-${amenity}`}
+                          checked={filterAmenities.includes(amenity)}
+                          onCheckedChange={() => toggleAmenity(amenity)}
+                        />
+                        <Label htmlFor={`amenity-${amenity}`} className="text-sm">
+                          {amenity}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-between">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setFilterCapacity(null)
+                      setFilterAmenities([])
+                    }}
+                  >
+                    Clear Filters
+                  </Button>
+                  <Button onClick={() => setShowFilters(false)}>Apply</Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+
+      {/* Results count */}
+      <div className="text-sm text-muted-foreground">
+        {filteredRooms.length} {filteredRooms.length === 1 ? "room" : "rooms"} found
+      </div>
+
+      {/* Room grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredRooms.map((room) => (
+          <RoomBlock
+            key={room.id}
+            id={room.id}
+            name={room.name}
+            description={room.description}
+            price={room.price}
+            capacity={room.capacity}
+            amenities={room.amenities}
+            images={room.images}
+            available={room.available}
+            onSelect={handleRoomSelect}
+            selected={getSelectedQuantity(room.id)}
+          />
         ))}
+      </div>
+
+      {filteredRooms.length === 0 && (
+        <div className="text-center py-12">
+          <h3 className="text-lg font-medium">No rooms match your criteria</h3>
+          <p className="text-muted-foreground">Try adjusting your filters or search term</p>
+        </div>
+      )}
     </div>
   )
 }

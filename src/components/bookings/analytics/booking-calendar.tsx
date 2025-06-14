@@ -1,252 +1,214 @@
 "use client"
 
-import React, { useState } from "react"
-import { format, isSameDay, parseISO } from "date-fns"
-import { ChevronDown } from "lucide-react"
+import { useState } from "react"
+import { format, isSameMonth, isToday, isWeekend } from "date-fns"
+import { cn } from "@/lib/utils"
+import type { Booking, OccupancyData } from "./booking-analytics"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Booking, OccupancyData } from "./booking-analytics"
-import { useRoomMap } from "@/components/rooms/use-room-map"
-
-interface RoomWithBookings {
-  roomNumber: string;
-  roomId?: string;
-  floor: number;
-  type: string;
-  bookings: Booking[];
-}
+import { Badge } from "@/components/ui/badge"
 
 interface BookingCalendarProps {
-  bookings: Booking[];
-  occupancyData: OccupancyData[];
-  currentDate: Date;
-  isLoading: boolean;
-  onBookingClick: (booking: Booking) => void;
-  hotelId:string|undefined;
+  bookings: Booking[]
+  occupancyData: OccupancyData[]
+  currentDate: Date
+  isLoading: boolean
+  onBookingClick: (booking: Booking) => void
+  hotelId?: string
 }
 
 export default function BookingCalendar({
   bookings,
   occupancyData,
+  currentDate,
   isLoading,
   onBookingClick,
-  hotelId
+  hotelId,
 }: BookingCalendarProps) {
-  const [expandedRoomTypes, setExpandedRoomTypes] = useState<string[]>([])
-  const { roomNumberMap, floorMap, loading: roomLoading } = useRoomMap(hotelId)
+  const [hoveredDate, setHoveredDate] = useState<Date | null>(null)
 
+  // Get the days of the week
+  const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
-  // Group rooms by type
-  const roomsByType: Record<string, RoomWithBookings[]> = bookings.reduce((acc, booking) => {
-  const roomType = booking.roomType || "Unknown"
+  // Get the days in the current month
+  const days = occupancyData.map((data) => data.date)
 
-  if (!acc[roomType]) {
-    acc[roomType] = []
+  // Get the first day of the month
+  const firstDayOfMonth = days[0]
+  const startingDayIndex = firstDayOfMonth.getDay()
+
+  // Create an array of empty cells for the days before the first day of the month
+  const emptyCells = Array.from({ length: startingDayIndex }, (_, i) => i)
+
+  // Function to get the color based on occupancy percentage
+  const getOccupancyColor = (percentage: number) => {
+    if (percentage === 0) return "bg-gray-100"
+    if (percentage < 30) return "bg-green-100"
+    if (percentage < 60) return "bg-yellow-100"
+    if (percentage < 80) return "bg-orange-100"
+    return "bg-red-100"
   }
 
-  // If booking has multiple roomIds
-  const roomIds = booking.roomIds || [] // <-- Use roomIds instead of roomId
-
-  for (const roomId of roomIds) {
-    // Optional: derive roomNumber/floor from roomId if not directly available
-    const roomNumber = roomNumberMap?.[roomId] || `#${roomId}` // Fallback to "#roomId"
-    const floor = floorMap?.[roomId] || 0
-
-    // Check if this room already exists under this type
-    let existingRoom = acc[roomType].find((r) => r.roomId === roomId)
-
-    if (!existingRoom) {
-      acc[roomType].push({
-        roomId,
-        roomNumber,
-        floor,
-        type: roomType,
-        bookings: [booking],
-      })
-    } else {
-      existingRoom.bookings.push(booking)
-    }
+  // Function to get bookings for a specific date
+  const getBookingsForDate = (date: Date) => {
+    return bookings.filter((booking) => {
+      try {
+        const checkIn = new Date(booking.checkInDate)
+        const checkOut = new Date(booking.checkOutDate)
+        return date >= checkIn && date <= checkOut
+      } catch (e) {
+        return false
+      }
+    })
   }
 
-  return acc
-}, {} as Record<string, RoomWithBookings[]>)
+  // Function to get occupancy data for a specific date
+  const getOccupancyForDate = (date: Date) => {
+    return occupancyData.find((data) => {
+      return (
+        data.date.getDate() === date.getDate() &&
+        data.date.getMonth() === date.getMonth() &&
+        data.date.getFullYear() === date.getFullYear()
+      )
+    })
+  }
 
+  // Function to render the occupancy percentage for a date
+  const renderOccupancy = (date: Date) => {
+    const occupancy = getOccupancyForDate(date)
+    if (!occupancy) return null
 
-  // Sort rooms by number within each type
-  Object.keys(roomsByType).forEach((type) => {
-    roomsByType[type].sort((a, b) => a.roomNumber.localeCompare(b.roomNumber))
-  })
-
-  const toggleRoomType = (roomType: string) => {
-    setExpandedRoomTypes((prev) =>
-      prev.includes(roomType) ? prev.filter((type) => type !== roomType) : [...prev, roomType],
+    return (
+      <div className="text-xs font-medium mt-1">
+        {occupancy.percentage}% ({occupancy.occupied}/{occupancy.occupied + occupancy.available})
+      </div>
     )
   }
 
-  // Get days for the calendar view
-  const days = occupancyData
+  // Function to render room type occupancy for a date
+  const renderRoomTypeOccupancy = (date: Date) => {
+    const occupancy = getOccupancyForDate(date)
+    if (!occupancy || !occupancy.roomTypeOccupancy) return null
+
+    return (
+      <div className="mt-1 space-y-1">
+        {Object.entries(occupancy.roomTypeOccupancy).map(([roomType, data]) => (
+          <div key={roomType} className="text-[10px] flex justify-between">
+            <span>{roomType}:</span>
+            <span>
+              {data.percentage}% ({data.occupied}/{data.total})
+            </span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // Function to render bookings for a date
+  const renderBookings = (date: Date) => {
+    const dateBookings = getBookingsForDate(date)
+    if (dateBookings.length === 0) return null
+
+    return (
+      <div className="mt-1 space-y-1">
+        {dateBookings.slice(0, 2).map((booking) => (
+          <Badge
+            key={booking.id}
+            variant="outline"
+            className="text-[10px] px-1 py-0 cursor-pointer truncate max-w-full"
+            onClick={(e) => {
+              e.stopPropagation()
+              onBookingClick(booking)
+            }}
+          >
+            {booking.guest.firstName} {booking.guest.lastName}
+          </Badge>
+        ))}
+        {dateBookings.length > 2 && (
+          <Badge variant="outline" className="text-[10px] px-1 py-0">
+            +{dateBookings.length - 2} more
+          </Badge>
+        )}
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (
-      <div className="p-6">
-        <Skeleton className="h-8 w-full mb-4" />
-        <div className="space-y-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <Skeleton className="h-6 w-40" />
-              <Skeleton className="h-16 w-full" />
+      <div className="p-4">
+        <div className="grid grid-cols-7 gap-1">
+          {daysOfWeek.map((day) => (
+            <div key={day} className="text-center font-medium text-sm py-2">
+              {day}
             </div>
+          ))}
+          {Array.from({ length: 35 }, (_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
           ))}
         </div>
       </div>
     )
   }
 
-  // Handle the case with no bookings
-  if (Object.keys(roomsByType).length === 0) {
-    return (
-      <div className="p-6 text-center">
-        <p className="text-lg text-muted-foreground">No bookings found for the selected period and filters.</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="bg-muted/50 border-y">
-            <th className="p-3 text-left font-medium w-32">ROOMS</th>
-            {days.map((day, index) => (
-              <th key={index} className="p-3 text-center font-medium min-w-[120px]">
-                <div className="flex flex-col items-center">
-                  <span className="text-xs text-muted-foreground">{format(day.date, "EEE d")}</span>
-                  <span className="text-sm font-bold">{day.percentage}%</span>
-                </div>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Object.entries(roomsByType).map(([roomType, rooms]) => (
-            <React.Fragment key={roomType}>
-              <tr className="border-b hover:bg-muted/30 cursor-pointer">
-                <td 
-                  className="p-3 font-medium flex items-center gap-1" 
-                  onClick={() => toggleRoomType(roomType)}
+    <div className="p-4">
+      <div className="grid grid-cols-7 gap-1">
+        {daysOfWeek.map((day) => (
+          <div key={day} className="text-center font-medium text-sm py-2">
+            {day}
+          </div>
+        ))}
+
+        {emptyCells.map((i) => (
+          <div key={`empty-${i}`} className="h-24 bg-gray-50 rounded-md"></div>
+        ))}
+
+        {days.map((day) => {
+          const isCurrentMonth = isSameMonth(day, currentDate)
+          const isWeekendDay = isWeekend(day)
+          const occupancy = getOccupancyForDate(day)
+          const occupancyColor = occupancy ? getOccupancyColor(occupancy.percentage) : "bg-gray-100"
+
+          return (
+            <div
+              key={day.toString()}
+              className={cn(
+                "h-24 p-1 rounded-md transition-colors border",
+                isCurrentMonth ? occupancyColor : "bg-gray-50 text-gray-400",
+                isToday(day) && "border-blue-500",
+                isWeekendDay && "bg-opacity-70",
+                "hover:border-blue-400 cursor-pointer overflow-hidden",
+              )}
+              onMouseEnter={() => setHoveredDate(day)}
+              onMouseLeave={() => setHoveredDate(null)}
+              title={format(day, "EEEE, MMMM d, yyyy")}
+            >
+              <div className="flex justify-between items-start">
+                <span
+                  className={cn(
+                    "text-sm font-medium",
+                    isToday(day) && "bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center",
+                  )}
                 >
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      expandedRoomTypes.includes(roomType) ? "rotate-0" : "-rotate-90"
-                    }`}
-                  />
-                  <span>{roomType}</span>
-                </td>
-                {days.map((day, dayIndex) => {
-                  const roomsOfType = rooms.length
-                  const bookedRooms = rooms.filter((room) =>
-                    room.bookings.some((booking) => {
-                      try {
-                        const checkIn = parseISO(booking.checkInDate)
-                        const checkOut = parseISO(booking.checkOutDate)
-                        return day.date >= checkIn && day.date <= checkOut
-                      } catch (e) {
-                        console.error("Date parsing error:", e)
-                        return false
-                      }
-                    }),
-                  ).length
-
-                  const available = roomsOfType - bookedRooms
-                  const displayText =
-                    available === 0 ? "0" : available > 0 ? `+${available}` : `-${Math.abs(available)}`
-
-                  return (
-                    <td key={dayIndex} className="p-3 text-center">
-                      <span
-                        className={`
-                        ${available > 0 ? "text-green-600" : available < 0 ? "text-red-600" : "text-gray-500"}
-                        font-medium
-                      `}
-                      >
-                        {displayText}
-                      </span>
-                    </td>
-                  )
-                })}
-              </tr>
-
-              {expandedRoomTypes.includes(roomType) &&
-                rooms.map((room) => (
-                  <tr key={`${roomType}-${room.roomNumber}`} className="border-b hover:bg-muted/20">
-                    <td className="p-3 pl-8 text-sm">
-                      {room.roomNumber} 
-                      <span className="text-xs text-muted-foreground ml-2">
-                        (Floor {room.floor})
-                      </span>
-                    </td>
-                    
-                    {days.map((day, dayIndex) => {
-                      const bookingsForDay = room.bookings.filter((booking) => {
-                        try {
-                          const checkIn = parseISO(booking.checkInDate)
-                          const checkOut = parseISO(booking.checkOutDate)
-                          return day.date >= checkIn && day.date <= checkOut
-                        } catch (e) {
-                          console.error("Date parsing error:", e)
-                          return false
-                        }
-                      })
-
-                      return (
-                        <td key={dayIndex} className="p-0 relative h-12">
-                          {bookingsForDay.length === 0 ? (
-                            <div className="h-full flex items-center justify-center text-xs text-gray-400">
-                              Available
-                            </div>
-                          ) : (
-                            bookingsForDay.map((booking, i) => {
-                              try {
-                                const isCheckIn = isSameDay(parseISO(booking.checkInDate), day.date)
-                                const isCheckOut = isSameDay(parseISO(booking.checkOutDate), day.date)
-
-                                // Determine the color based on booking status
-                                let bgColor = "bg-green-200"
-                                if (booking.bookingStatus === "CONFIRMED") bgColor = "bg-green-200"
-                                if (booking.bookingStatus === "CHECKED_IN") bgColor = "bg-blue-200"
-                                if (booking.bookingStatus === "PENDING") bgColor = "bg-amber-200"
-                                if (booking.bookingStatus === "CANCELLED") bgColor = "bg-red-200"
-                                if (booking.bookingStatus === "CHECKED_OUT") bgColor = "bg-gray-200"
-
-                                return (
-                                  <div
-                                    key={`booking-${booking.id || i}`}
-                                    className={`
-                                    ${bgColor} p-1 text-xs cursor-pointer
-                                    ${isCheckIn ? "rounded-l-md border-l-4 border-l-green-600" : ""}
-                                    ${isCheckOut ? "rounded-r-md border-r-4 border-r-green-600" : ""}
-                                    h-full flex items-center justify-center
-                                  `}
-                                    onClick={() => onBookingClick(booking)}
-                                    title={`${booking.guest.firstName} ${booking.guest.lastName} - ${booking.bookingStatus}`}
-                                  >
-                                    {booking.guest.firstName} {booking.guest.lastName}
-                                  </div>
-                                )
-                              } catch (e) {
-                                console.error("Error rendering booking:", e)
-                                return null
-                              }
-                            })
-                          )}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
+                  {format(day, "d")}
+                </span>
+              </div>
+              {renderOccupancy(day)}
+              {renderBookings(day)}
+              {hoveredDate && hoveredDate.getDate() === day.getDate() && hoveredDate.getMonth() === day.getMonth() && (
+                <div className="text-[10px] mt-1">
+                  <div>
+                    <span className="font-medium">Available:</span> {occupancy?.available || 0}
+                  </div>
+                  <div>
+                    <span className="font-medium">Occupied:</span> {occupancy?.occupied || 0}
+                  </div>
+                  {renderRoomTypeOccupancy(day)}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
