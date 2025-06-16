@@ -25,17 +25,39 @@ const UPDATE_ROOM_PRICING = gql`
   }
 `
 
-// GraphQL mutation for updating room pricing configuration
-const UPDATE_ROOM_PRICING_CONFIG = gql`
-  mutation UpdateRoomPricingConfig($hotelId: String!, $roomType: String!, $basePrice: Float!, $minPrice: Float!, $maxPrice: Float!) {
-    updateRoomPricingConfig(hotelId: $hotelId, roomType: $roomType, basePrice: $basePrice, minPrice: $minPrice, maxPrice: $maxPrice) {
-      roomType
-      basePrice
-      minPrice
+// Use localStorage to store pricing configuration since the backend doesn't have this endpoint
+function savePricingConfig(hotelId: string, roomType: string, basePrice: number, minPrice: number, maxPrice: number) {
+  try {
+    // Get existing config or initialize empty object
+    const configKey = `pricingConfig_${hotelId}`;
+    const existingConfig = JSON.parse(localStorage.getItem(configKey) || '{}');
+    
+    // Update config for this room type
+    existingConfig[roomType] = {
+      basePrice,
+      minPrice,
       maxPrice
-    }
+    };
+    
+    // Save back to localStorage
+    localStorage.setItem(configKey, JSON.stringify(existingConfig));
+    return true;
+  } catch (error) {
+    console.error("Error saving pricing config to localStorage:", error);
+    return false;
   }
-`
+}
+
+// Function to get pricing config from localStorage
+function getPricingConfig(hotelId: string) {
+  try {
+    const configKey = `pricingConfig_${hotelId}`;
+    return JSON.parse(localStorage.getItem(configKey) || '{}');
+  } catch (error) {
+    console.error("Error getting pricing config from localStorage:", error);
+    return {};
+  }
+}
 
 interface RoomType {
   id: string
@@ -45,6 +67,31 @@ interface RoomType {
   maxPrice: number
   available: number
   roomIds: string[]
+}
+
+interface WeekendRate {
+  roomId: string
+  price: number
+  minPrice: number
+  maxPrice: number
+  enabled: boolean
+}
+
+// Debounce hook for delayed validation
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
+
+    return () => {
+      clearTimeout(handler)
+    }
+  }, [value, delay])
+
+  return debouncedValue
 }
 
 export default function RoomPricing() {
@@ -61,8 +108,8 @@ export default function RoomPricing() {
   const [editableRoomTypes, setEditableRoomTypes] = useState<RoomType[]>([])
 
   // Weekend rates state
-  const [weekendRates, setWeekendRates] = useState<RoomType[]>([])
-  const [editableWeekendRates, setEditableWeekendRates] = useState<RoomType[]>([])
+  const [weekendRates, setWeekendRates] = useState<WeekendRate[]>([])
+  const [editableWeekendRates, setEditableWeekendRates] = useState<WeekendRate[]>([])
 
   // Weekend days
   const [weekendDays, setWeekendDays] = useState({
@@ -85,15 +132,8 @@ export default function RoomPricing() {
     }
   })
 
-  // Setup mutation for room pricing configuration
-  const [updateRoomPricingConfig] = useMutation(UPDATE_ROOM_PRICING_CONFIG, {
-    onCompleted: (data) => {
-      console.log("Room pricing configuration updated successfully:", data)
-    },
-    onError: (error) => {
-      console.error("Error updating room pricing configuration:", error)
-    }
-  })
+  // Debounced temp prices for validation
+  const debouncedTempPrices = useDebounce(tempPrices, 800) // 800ms delay
 
   useEffect(() => {
     if (selectedHotel?.id) {
@@ -101,7 +141,7 @@ export default function RoomPricing() {
     }
   }, [selectedHotel])
 
-  // Fetch rooms using GraphQL
+  // Fetch rooms using the correct GraphQL schema
   const fetchRooms = async () => {
     setRoomsLoading(true)
 
@@ -141,12 +181,8 @@ export default function RoomPricing() {
       const result = await response.json()
       console.log("Rooms API Response:", result)
 
-      if (result.errors) {
-        throw new Error(result.errors[0].message)
-      }
-
       if (result.data && result.data.rooms) {
-        // Group rooms by room type to create room categories
+        // Group rooms by type and calculate pricing
         const roomTypeGroups = result.data.rooms.reduce((acc: any, room: any) => {
           const roomType = room.roomType
           if (!acc[roomType]) {
@@ -162,49 +198,27 @@ export default function RoomPricing() {
           acc[roomType].roomIds.push(room.id)
           return acc
         }, {})
-
-        // Now fetch the pricing configuration
-        const pricingResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            query: `
-  query {
-    roomPricing(hotelId: "${selectedHotel?.id}") {
-      roomType
-      basePrice
-      minPrice
-      maxPrice
-    }
-  }
-`,
-          }),
-        })
-
-        const pricingResult = await pricingResponse.json()
-        const pricingConfig = pricingResult.data?.roomPricing || []
         
-        // Create room types for pricing
+        // Get pricing configuration from localStorage
+        const pricingConfig = getPricingConfig(selectedHotel?.id || '');
+        
+        // Calculate pricing data for each room type
         const roomTypesForPricing: RoomType[] = Object.entries(roomTypeGroups).map(
           ([typeName, data]: [string, any]) => {
             const avgPrice =
               data.rooms.reduce((sum: number, room: any) => sum + (room.pricePerNight || 1000), 0) / data.totalRooms
 
             // Check if we have pricing configuration for this room type
-            const pricingConfig = pricingResult.data?.roomPricing?.find(
-              (p: any) => p.roomType === typeName
-            )
+            const roomConfig = pricingConfig[typeName];
 
             // Calculate base price and min/max prices
             let basePrice, minPrice, maxPrice;
             
-            if (pricingConfig) {
+            if (roomConfig) {
               // Use the configured pricing
-              basePrice = pricingConfig.basePrice
-              minPrice = pricingConfig.minPrice
-              maxPrice = pricingConfig.maxPrice
+              basePrice = roomConfig.basePrice;
+              minPrice = roomConfig.minPrice;
+              maxPrice = roomConfig.maxPrice;
             } else {
               // Use default calculations
               basePrice = Math.round(avgPrice)
@@ -234,7 +248,7 @@ export default function RoomPricing() {
               minPrice: minPrice,
               maxPrice: maxPrice,
               available: data.totalRooms,
-              roomIds: data.roomIds,
+              roomIds: data.roomIds
             }
           },
         )
@@ -244,12 +258,19 @@ export default function RoomPricing() {
         setEditableRoomTypes(JSON.parse(JSON.stringify(roomTypesForPricing)))
 
         // Initialize weekend rates
-        const initialWeekendRates = roomTypesForPricing.map((room) => ({
-          ...room,
-          price: Math.round(room.price * 1.25), // 25% higher than standard rate
-          minPrice: Math.round(room.minPrice * 1.25),
-          maxPrice: Math.round(room.maxPrice * 1.25),
-        }))
+        const initialWeekendRates = roomTypesForPricing.map((room) => {
+          // Weekend rates are 25% higher than standard rates
+          const weekendRatio = 1.25
+          const weekendPrice = Math.round(room.price * weekendRatio)
+          
+          return {
+            roomId: room.id,
+            price: weekendPrice,
+            minPrice: Math.round(room.minPrice * weekendRatio),
+            maxPrice: Math.round(room.maxPrice * weekendRatio),
+            enabled: true
+          }
+        })
 
         setWeekendRates(initialWeekendRates)
         setEditableWeekendRates(JSON.parse(JSON.stringify(initialWeekendRates)))
@@ -272,6 +293,35 @@ export default function RoomPricing() {
     }
   }
 
+  // Debounced validation effect
+  useEffect(() => {
+    const errors: Record<string, string> = {}
+
+    Object.entries(debouncedTempPrices).forEach(([key, price]) => {
+      const [roomId, field] = key.split("-")
+
+      if (field === "price") {
+        const room = editableRoomTypes.find((r) => r.id === roomId)
+        if (room && (price < room.minPrice || price > room.maxPrice)) {
+          errors[key] = `Price should be between ฿${room.minPrice} and ฿${room.maxPrice}`
+        }
+      }
+    })
+
+    setValidationErrors(errors)
+
+    // Show toast for validation errors
+    Object.values(errors).forEach((error) => {
+      if (error) {
+        toast({
+          title: "Price Warning",
+          description: error,
+          variant: "destructive",
+        })
+      }
+    })
+  }, [debouncedTempPrices, editableRoomTypes, toast])
+
   // Handle price change for standard rates
   const handlePriceChange = useCallback((id: string, field: "price" | "minPrice" | "maxPrice", value: string) => {
     const numValue = Number.parseFloat(value) || 0
@@ -283,23 +333,40 @@ export default function RoomPricing() {
     }))
 
     // Update the actual state immediately for UI responsiveness
-    setEditableRoomTypes((prev) => prev.map((room) => (room.id === id ? { ...room, [field]: numValue } : room)))
+    setEditableRoomTypes((prev) => {
+      return prev.map((room) => {
+        if (room.id === id) {
+          return { ...room, [field]: numValue }
+        }
+        return room
+      })
+    })
   }, [])
 
   // Handle weekend price change
   const handleWeekendPriceChange = useCallback(
-    (id: string, field: "price" | "minPrice" | "maxPrice", value: string) => {
+    (roomId: string, field: "price" | "minPrice" | "maxPrice", value: string) => {
       const numValue = Number.parseFloat(value) || 0
-      setEditableWeekendRates((prev) =>
-        prev.map((rate) => (rate.id === id ? { ...rate, [field]: numValue } : rate)),
-      )
+      
+      setEditableWeekendRates((prev) => {
+        return prev.map((rate) => {
+          if (rate.roomId === roomId) {
+            return { ...rate, [field]: numValue }
+          }
+          return rate
+        })
+      })
     },
     [],
   )
 
-  // Save changes to the backend
+  const handleWeekendRateToggle = useCallback((roomId: string, enabled: boolean) => {
+    setEditableWeekendRates((prev) => prev.map((rate) => (rate.roomId === roomId ? { ...rate, enabled } : rate)))
+  }, [])
+
   const handleSave = async () => {
     setLoading(true)
+    setError(null)
 
     try {
       // Validate prices based on active tab
@@ -314,16 +381,14 @@ export default function RoomPricing() {
 
         // Update each room's price in the backend
         for (const roomType of editableRoomTypes) {
-          // First, update the pricing configuration
-          await updateRoomPricingConfig({
-            variables: {
-              hotelId: selectedHotel?.id,
-              roomType: roomType.roomType,
-              basePrice: roomType.price,
-              minPrice: roomType.minPrice,
-              maxPrice: roomType.maxPrice
-            }
-          })
+          // First, save the pricing configuration to localStorage
+          savePricingConfig(
+            selectedHotel?.id || '',
+            roomType.roomType,
+            roomType.price,
+            roomType.minPrice,
+            roomType.maxPrice
+          );
           
           // Then update each room's price in the backend
           for (const roomId of roomType.roomIds) {
@@ -341,8 +406,8 @@ export default function RoomPricing() {
         setRoomTypes(editableRoomTypes)
       } else if (activeTab === "weekend") {
         for (const rate of editableWeekendRates) {
-          if (rate.minPrice > rate.price || rate.price > rate.maxPrice) {
-            const room = roomTypes.find((r) => r.id === rate.id)
+          if (rate.enabled && (rate.minPrice > rate.price || rate.price > rate.maxPrice)) {
+            const room = roomTypes.find((r) => r.id === rate.roomId)
             throw new Error(
               `Invalid weekend price range for ${room?.roomType}. Min price must be less than base price, and base price must be less than max price.`,
             )
@@ -577,6 +642,7 @@ export default function RoomPricing() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[250px]">Room Category</TableHead>
+                        <TableHead>Enabled</TableHead>
                         <TableHead>Min Price (฿)</TableHead>
                         <TableHead>Base Price (฿)</TableHead>
                         <TableHead>Max Price (฿)</TableHead>
@@ -585,16 +651,23 @@ export default function RoomPricing() {
                     </TableHeader>
                     <TableBody>
                       {editableWeekendRates.map((rate) => {
-                        const room = roomTypes.find((r) => r.id === rate.id)
+                        const room = roomTypes.find((r) => r.id === rate.roomId)
                         return (
-                          <TableRow key={rate.id}>
+                          <TableRow key={rate.roomId}>
                             <TableCell className="font-medium">{room?.roomType}</TableCell>
+                            <TableCell>
+                              <Switch
+                                checked={rate.enabled}
+                                onCheckedChange={(checked) => handleWeekendRateToggle(rate.roomId, checked)}
+                              />
+                            </TableCell>
                             <TableCell>
                               <Input
                                 type="number"
                                 value={rate.minPrice}
-                                onChange={(e) => handleWeekendPriceChange(rate.id, "minPrice", e.target.value)}
+                                onChange={(e) => handleWeekendPriceChange(rate.roomId, "minPrice", e.target.value)}
                                 className="w-[120px]"
+                                disabled={!rate.enabled}
                                 min="0"
                                 step="0.01"
                               />
@@ -603,12 +676,13 @@ export default function RoomPricing() {
                               <Input
                                 type="number"
                                 value={rate.price}
-                                onChange={(e) => handleWeekendPriceChange(rate.id, "price", e.target.value)}
+                                onChange={(e) => handleWeekendPriceChange(rate.roomId, "price", e.target.value)}
                                 className={`w-[120px] ${
-                                  rate.price < rate.minPrice || rate.price > rate.maxPrice
+                                  rate.enabled && (rate.price < rate.minPrice || rate.price > rate.maxPrice)
                                     ? "border-red-500 bg-red-50"
                                     : ""
                                 }`}
+                                disabled={!rate.enabled}
                                 min="0"
                                 step="0.01"
                               />
@@ -617,8 +691,9 @@ export default function RoomPricing() {
                               <Input
                                 type="number"
                                 value={rate.maxPrice}
-                                onChange={(e) => handleWeekendPriceChange(rate.id, "maxPrice", e.target.value)}
+                                onChange={(e) => handleWeekendPriceChange(rate.roomId, "maxPrice", e.target.value)}
                                 className="w-[120px]"
+                                disabled={!rate.enabled}
                                 min="0"
                                 step="0.01"
                               />
