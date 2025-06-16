@@ -368,6 +368,7 @@ export default function PricingPage() {
 
   const handleSave = async () => {
     setLoading(true)
+    setError(null)
 
     try {
       // Validate prices based on active tab

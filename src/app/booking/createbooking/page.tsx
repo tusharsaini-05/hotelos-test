@@ -7,6 +7,17 @@ import { CalendarDays, Users, Bed, CreditCard } from "lucide-react"
 import BookingForm from "@/components/bookings/createbooking/booking-form"
 import { useHotelContext } from "@/providers/hotel-provider"
 
+// Function to get pricing config from localStorage
+function getPricingConfig(hotelId: string) {
+  try {
+    const configKey = `pricingConfig_${hotelId}`;
+    return JSON.parse(localStorage.getItem(configKey) || '{}');
+  } catch (error) {
+    console.error("Error getting pricing config from localStorage:", error);
+    return {};
+  }
+}
+
 export default function CreateBookingPage() {
   const { selectedHotel } = useHotelContext()
   const [pricingSummary, setPricingSummary] = useState<
@@ -62,16 +73,58 @@ export default function CreateBookingPage() {
           return acc
         }, {})
 
+        // Get pricing configuration from localStorage
+        const pricingConfig = getPricingConfig(selectedHotel?.id || '');
+        
         // Calculate pricing data for each room type
         const pricingMap: Record<string, { basePrice: number; minPrice: number; maxPrice: number }> = {}
 
         Object.entries(roomTypeGroups).forEach(([typeName, data]: [string, any]) => {
           const avgPrice = data.prices.reduce((sum: number, price: number) => sum + price, 0) / data.totalRooms
 
-          pricingMap[typeName] = {
-            basePrice: Math.round(avgPrice),
-            minPrice: Math.round(avgPrice * 0.5),
-            maxPrice: Math.round(avgPrice * 2),
+          // Check if we have pricing configuration for this room type
+          const roomConfig = pricingConfig[typeName];
+
+          if (roomConfig) {
+            // Use the configured pricing
+            pricingMap[typeName] = {
+              basePrice: roomConfig.basePrice,
+              minPrice: roomConfig.minPrice,
+              maxPrice: roomConfig.maxPrice
+            };
+          } else {
+            // For STANDARD room type
+            if (typeName === "STANDARD") {
+              pricingMap[typeName] = {
+                basePrice: 500,
+                minPrice: 250,
+                maxPrice: 1000,
+              }
+            }
+            // For DELUXE room type
+            else if (typeName === "DELUXE") {
+              pricingMap[typeName] = {
+                basePrice: 300,
+                minPrice: 150,
+                maxPrice: 600,
+              }
+            }
+            // For SUITE room type
+            else if (typeName === "SUITE") {
+              pricingMap[typeName] = {
+                basePrice: 2000,
+                minPrice: 1000,
+                maxPrice: 4000,
+              }
+            }
+            // For other room types
+            else {
+              pricingMap[typeName] = {
+                basePrice: Math.round(avgPrice),
+                minPrice: Math.round(avgPrice * 0.5),
+                maxPrice: Math.round(avgPrice * 2),
+              }
+            }
           }
         })
 
