@@ -15,8 +15,9 @@ import { format, addDays } from "date-fns"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
-import { useHotelContext } from "@/providers/hotel-provider"
 import { useToast } from "@/components/ui/use-toast"
+import { useEffect, useState } from "react"
+import { useHotelContext } from "@/providers/hotel-provider"
 
 // Room types from backend enum
 const ROOM_TYPES = ["STANDARD", "DELUXE", "SUITE", "EXECUTIVE", "PRESIDENTIAL"] as const
@@ -62,9 +63,96 @@ interface BookingFormProps {
 
 export default function BookingForm({ onSuccess }: BookingFormProps) {
   const [createBooking, { loading }] = useMutation(CREATE_BOOKING)
-  const { selectedHotel } = useHotelContext()
   const { toast } = useToast()
   const today = new Date()
+
+  // Pricing data state
+  const [pricingData, setPricingData] = useState<
+    Record<string, { basePrice: number; minPrice: number; maxPrice: number }>
+  >({})
+  const [pricingLoading, setPricingLoading] = useState(true)
+
+  // Access hotel context
+  const { selectedHotel } = useHotelContext()
+
+  // Fetch pricing data
+  useEffect(() => {
+    if (selectedHotel?.id) {
+      fetchPricingData()
+    }
+  }, [selectedHotel])
+
+  const fetchPricingData = async () => {
+    setPricingLoading(true)
+
+    try {
+      const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT || "http://localhost:8000/graphql"
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: `
+  query {
+    rooms(
+      hotelId: "${selectedHotel?.id}"
+      limit: 100
+      offset: 0
+    ) {
+      id
+      roomType
+      pricePerNight
+    }
+  }
+`,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.data && result.data.rooms) {
+        // Group rooms by type and calculate pricing
+        const roomTypeGroups = result.data.rooms.reduce((acc: any, room: any) => {
+          const roomType = room.roomType
+          if (!acc[roomType]) {
+            acc[roomType] = {
+              prices: [],
+              totalRooms: 0,
+            }
+          }
+          acc[roomType].prices.push(room.pricePerNight || 1000)
+          acc[roomType].totalRooms += 1
+          return acc
+        }, {})
+
+        // Calculate pricing data for each room type
+        const pricingMap: Record<string, { basePrice: number; minPrice: number; maxPrice: number }> = {}
+
+        Object.entries(roomTypeGroups).forEach(([typeName, data]: [string, any]) => {
+          const avgPrice = data.prices.reduce((sum: number, price: number) => sum + price, 0) / data.totalRooms
+
+          pricingMap[typeName] = {
+            basePrice: Math.round(avgPrice),
+            minPrice: Math.round(avgPrice * 0.5), // 50% of avg as min
+            maxPrice: Math.round(avgPrice * 2), // 200% of avg as max
+          }
+        })
+
+        setPricingData(pricingMap)
+      }
+    } catch (error) {
+      console.error("Error fetching pricing data:", error)
+      toast({
+        title: "Warning",
+        description: "Could not load pricing data. Using default prices.",
+        variant: "destructive",
+      })
+    } finally {
+      setPricingLoading(false)
+    }
+  }
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
@@ -136,6 +224,17 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
         variant: "destructive",
       })
     }
+  }
+
+  if (pricingLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Loading pricing information...</span>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -341,6 +440,7 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
 
             {fields.map((field, index) => {
               const currentRoomType = watchRoomTypeBookings?.[index]?.roomType ?? ""
+              const pricing = pricingData[currentRoomType]
 
               return (
                 <div key={field.id} className="mb-4 p-4 border rounded-md">
@@ -367,11 +467,21 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {ROOM_TYPES.map((type) => (
-                                <SelectItem key={type} value={type}>
-                                  {type.charAt(0) + type.slice(1).toLowerCase()}
-                                </SelectItem>
-                              ))}
+                              {ROOM_TYPES.map((type) => {
+                                const typePricing = pricingData[type]
+                                return (
+                                  <SelectItem key={type} value={type}>
+                                    <div className="flex flex-col">
+                                      <span>{type.charAt(0) + type.slice(1).toLowerCase()}</span>
+                                      {typePricing && (
+                                        <div className="text-xs text-gray-500">
+                                          ฿{typePricing.basePrice} (฿{typePricing.minPrice} - ฿{typePricing.maxPrice})
+                                        </div>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                )
+                              })}
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -393,6 +503,31 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
                       )}
                     />
                   </div>
+
+                  {/* Pricing Display */}
+                  {pricing && (
+                    <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="text-lg font-semibold text-green-600">
+                            ฿{pricing.basePrice}
+                            <span className="text-sm font-normal text-gray-500 ml-1">per night</span>
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Range: ฿{pricing.minPrice} - ฿{pricing.maxPrice}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm text-gray-600">
+                            {watchRoomTypeBookings?.[index]?.numberOfRooms || 1} room(s)
+                          </div>
+                          <div className="text-lg font-semibold">
+                            ฿{pricing.basePrice * (watchRoomTypeBookings?.[index]?.numberOfRooms || 1)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}

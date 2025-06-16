@@ -13,7 +13,6 @@ import {
 } from "date-fns"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Booking } from "./booking-analytics"
 
@@ -79,12 +78,13 @@ export default function BookingCalendarGrid({
     }
   }
 
-  const getOccupancyColor = (percentage: number) => {
-    if (percentage === 0) return "bg-gray-100 text-gray-600"
-    if (percentage <= 30) return "bg-green-100 text-green-700"
-    if (percentage <= 60) return "bg-yellow-100 text-yellow-700"
-    if (percentage <= 80) return "bg-orange-100 text-orange-700"
-    return "bg-red-100 text-red-700"
+  const getOccupancyBackgroundColor = (percentage: number) => {
+    if (percentage === 0) return "bg-white"
+    if (percentage <= 20) return "bg-yellow-50"
+    if (percentage <= 40) return "bg-yellow-100"
+    if (percentage <= 60) return "bg-yellow-200"
+    if (percentage <= 80) return "bg-yellow-300"
+    return "bg-yellow-400"
   }
 
   const getBookingColor = (status: string) => {
@@ -206,43 +206,32 @@ export default function BookingCalendarGrid({
                 key={day.toISOString()}
                 className={`
                   min-h-[140px] p-3 border-r border-b last:border-r-0
-                  ${!isCurrentMonth ? "bg-gray-50 text-gray-400" : "bg-white"}
-                  ${isToday ? "bg-blue-50 border-blue-200" : ""}
-                  hover:bg-gray-50 transition-colors
+                  ${!isCurrentMonth ? "bg-gray-50 text-gray-400" : getOccupancyBackgroundColor(dayData.occupancyPercentage)}
+                  ${isToday ? "ring-2 ring-blue-400" : ""}
+                  hover:opacity-80 transition-all
                 `}
               >
-                {/* Date Header */}
+                {/* Date Header - Remove Badge */}
                 <div className="flex justify-between items-start mb-2">
                   <span className={`text-sm font-medium ${isToday ? "text-blue-600" : ""}`}>{format(day, "d")}</span>
-                  {dayData.occupancyPercentage > 0 && (
-                    <Badge
-                      variant="outline"
-                      className={`text-xs px-1 py-0 ${getOccupancyColor(dayData.occupancyPercentage)}`}
-                    >
-                      {dayData.occupancyPercentage}%
-                    </Badge>
-                  )}
                 </div>
 
-                {/* Occupancy Info */}
-                <div className="text-xs text-gray-500 mb-2 font-medium">{dayData.occupancyPercentage}% occupied</div>
+                {/* Single Occupancy Percentage Display */}
+                <div className="text-center mb-2">
+                  <div
+                    className={`text-lg font-bold ${dayData.occupancyPercentage > 0 ? "text-gray-800" : "text-gray-400"}`}
+                  >
+                    {dayData.occupancyPercentage}%
+                  </div>
+                </div>
 
-                {/* Bookings */}
-                <div className="space-y-1">
-                  {dayData.occupiedRooms > 0 && (
-                    <div
-                      className="text-xs p-1 rounded cursor-pointer border bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200 transition-colors text-center font-semibold"
-                      onClick={() => {
-                        // Click on the first booking for this day
-                        if (dayData.bookings.length > 0) {
-                          onBookingClick(dayData.bookings[0])
-                        }
-                      }}
-                      title={`${dayData.occupiedRooms} bookings on this day\n${dayData.bookings.map((b) => `${b.guest.firstName} ${b.guest.lastName} - ${b.bookingStatus}`).join("\n")}`}
-                    >
-                      {dayData.occupiedRooms}/{totalRooms}
-                    </div>
-                  )}
+                {/* Room Count Display */}
+                <div className="text-center">
+                  <div
+                    className={`text-sm font-semibold ${dayData.occupiedRooms > 0 ? "text-gray-700" : "text-gray-400"}`}
+                  >
+                    ({dayData.occupiedRooms}/{totalRooms})
+                  </div>
                 </div>
               </div>
             )
@@ -250,27 +239,31 @@ export default function BookingCalendarGrid({
         </div>
       </div>
 
-      {/* Legend */}
+      {/* Occupancy Legend */}
       <div className="flex items-center justify-center gap-6 text-sm">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-green-100 border border-green-200 rounded"></div>
-          <span>Confirmed</span>
+          <div className="w-4 h-4 bg-white border border-gray-300 rounded"></div>
+          <span>0%</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-blue-100 border border-blue-200 rounded"></div>
-          <span>Checked In</span>
+          <div className="w-4 h-4 bg-yellow-50 border border-gray-300 rounded"></div>
+          <span>1-20%</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-yellow-100 border border-yellow-200 rounded"></div>
-          <span>Pending</span>
+          <div className="w-4 h-4 bg-yellow-100 border border-gray-300 rounded"></div>
+          <span>21-40%</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-red-100 border border-red-200 rounded"></div>
-          <span>Cancelled</span>
+          <div className="w-4 h-4 bg-yellow-200 border border-gray-300 rounded"></div>
+          <span>41-60%</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-gray-100 border border-gray-200 rounded"></div>
-          <span>Checked Out</span>
+          <div className="w-4 h-4 bg-yellow-300 border border-gray-300 rounded"></div>
+          <span>61-80%</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-yellow-400 border border-gray-300 rounded"></div>
+          <span>81-100%</span>
         </div>
       </div>
     </div>

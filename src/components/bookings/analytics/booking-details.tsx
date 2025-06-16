@@ -1,904 +1,609 @@
 "use client"
 
-import { useState } from "react"
-import { format, parseISO } from "date-fns"
-import { X } from "lucide-react"
+import { useState, useEffect } from "react"
+import { AnimatePresence } from "framer-motion"
+import { MoreVertical, ArrowLeft, Loader2, CheckCircle, XCircle, AlertCircle, LogOut, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useSession } from "next-auth/react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { RoomUpgradeModal } from "../bookings/room-upgrade-modal"
 import { useToast } from "@/components/ui/use-toast"
-import { Booking, Room } from "./booking-analytics"
+import { format } from "date-fns"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu"
 
-interface ConfirmDialog {
-  open: boolean;
-  title: string;
-  description: string;
-  action: () => void;
-}
-
+// Fixed interface to use 'booking' instead of 'bookingId'
 interface BookingDetailsProps {
-  booking: Booking;
-  onClose: () => void;
-  roomDetails?: Room; // Optional detailed room information
+  booking: string
+  onBack: () => void
 }
 
-export default function BookingDetails({ booking, onClose, roomDetails }: BookingDetailsProps) {
-  const [activeTab, setActiveTab] = useState<string>("booking-details")
-  const [isLoading, setIsLoading] = useState<boolean>(false)
-  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>({
-    open: false,
-    title: "",
-    description: "",
-    action: () => {},
-  })
-
-  const { data: session } = useSession()
+export function BookingDetails({ booking, onBack }: BookingDetailsProps) {
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false)
+  const [isExtendModalOpen, setIsExtendModalOpen] = useState(false)
+  const [bookingData, setBookingData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [extendLoading, setExtendLoading] = useState(false)
+  const [collectPaymentLoading, setCollectPaymentLoading] = useState(false)
   const { toast } = useToast()
 
-  const handleModifyDates = () => {
-    setConfirmDialog({
-      open: true,
-      title: "Modify Booking Dates",
-      description: "Are you sure you want to modify the dates for this booking?",
-      action: async () => {
-        setIsLoading(true)
-        try {
-          const response = await fetch("http://localhost:8000/graphql", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-            },
-            body: JSON.stringify({
-              query: `
-                mutation {
-                  updateBooking(
-                    bookingId: "${booking.id}",
-                    input: {
-                      checkInDate: "${booking.checkInDate}",
-                      checkOutDate: "${booking.checkOutDate}"
-                    }
-                  ) {
-                    id
-                    checkInDate
-                    checkOutDate
-                  }
-                }
-              `
-            }),
-          })
-          
-          const result = await response.json()
-          if (result.data?.updateBooking) {
-            toast({
-              title: "Success",
-              description: "Booking dates updated successfully",
-            })
-          } else {
-            throw new Error("Failed to update booking dates")
-          }
-        } catch (error) {
-          console.error("Error updating booking dates:", error)
-          toast({
-            title: "Error",
-            description: "Failed to update booking dates",
-            variant: "destructive"
-          })
-        } finally {
-          setIsLoading(false)
-          setConfirmDialog((prev) => ({ ...prev, open: false }))
-        }
-      },
-    })
-  }
+  // GraphQL endpoint
+  const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT || "http://localhost:8000/graphql"
 
-  const handleChangeOccupancy = () => {
-    setConfirmDialog({
-      open: true,
-      title: "Change Occupancy",
-      description: "Are you sure you want to change the occupancy for this booking?",
-      action: async () => {
-        setIsLoading(true)
-        try {
-          const response = await fetch("http://localhost:8000/graphql", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-            },
-            body: JSON.stringify({
-              query: `
-                mutation {
-                  updateBooking(
-                    bookingId: "${booking.id}",
-                    input: {
-                      numberOfGuests: ${booking.numberOfGuests}
-                    }
-                  ) {
-                    id
-                    numberOfGuests
-                  }
-                }
-              `
-            }),
-          })
-          
-          const result = await response.json()
-          if (result.data?.updateBooking) {
-            toast({
-              title: "Success",
-              description: "Occupancy updated successfully",
-            })
-          } else {
-            throw new Error("Failed to update occupancy")
-          }
-        } catch (error) {
-          console.error("Error updating occupancy:", error)
-          toast({
-            title: "Error",
-            description: "Failed to update occupancy",
-            variant: "destructive"
-          })
-        } finally {
-          setIsLoading(false)
-          setConfirmDialog((prev) => ({ ...prev, open: false }))
-        }
-      },
-    })
-  }
+  useEffect(() => {
+    fetchBookingDetails()
+  }, [booking])
 
-  const handleCheckout = async () => {
-    setIsLoading(true)
+  const fetchBookingDetails = async () => {
+    setLoading(true)
     try {
-      const response = await fetch("http://localhost:8000/graphql", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
         },
         body: JSON.stringify({
           query: `
-            mutation {
-              updateBookingStatus(
-                bookingId: "${booking.id}",
-                status: "CHECKED_OUT"
-              ) {
+            query bookingId($bookingId: String!) {
+              booking(bookingId: $bookingId) {
                 id
+                bookingNumber
+                guest {
+                  firstName
+                  lastName
+                  email
+                }
+                checkInDate
+                checkOutDate
+                roomTypeBookings {
+                  roomType
+                  numberOfRooms
+                  roomIds
+                }
                 bookingStatus
+                paymentStatus
+                totalAmount
+                numberOfGuests
+                createdAt
               }
             }
-          `
+          `,
+          variables: { bookingId: booking },
         }),
       })
-      
+
       const result = await response.json()
-      if (result.data?.updateBookingStatus) {
-        toast({
-          title: "Success",
-          description: "Guest checked out successfully",
-        })
-        onClose()
-      } else {
-        throw new Error("Failed to check out guest")
+
+      if (result.errors) {
+        throw new Error(result.errors[0].message)
       }
+
+      // After setting booking data, derive room type
+      const roomType = result.data.booking.roomTypeBookings?.[0]?.roomType || "Standard"
+      setBookingData({
+        ...result.data.booking,
+        roomType: roomType,
+      })
     } catch (error) {
-      console.error("Error during checkout:", error)
+      console.error("Error fetching booking details:", error)
       toast({
         title: "Error",
-        description: "Failed to check out guest",
-        variant: "destructive"
+        description: "Failed to load booking details. Please try again.",
+        variant: "destructive",
       })
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  const handleCheckin = async () => {
-    setIsLoading(true)
+  const handleStatusChange = async (newStatus: string) => {
+    setStatusLoading(true)
     try {
-      const response = await fetch("http://localhost:8000/graphql", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
         },
         body: JSON.stringify({
           query: `
-            mutation {
+            mutation CheckInBooking ($bookingId: String!, $status: BookingStatus!, $notes: String) {
               updateBookingStatus(
-                bookingId: "${booking.id}",
-                status: "CHECKED_IN"
+                bookingId: $bookingId
+                status: $status
+                notes: $notes
               ) {
                 id
+                bookingNumber
                 bookingStatus
+                checkInTime
+                updatedAt
               }
             }
-          `
+          `,
+          variables: {
+            bookingId: booking,
+            status: newStatus,
+            notes: `Status changed to ${newStatus} at ${format(new Date(), "h:mm a")}`,
+          },
         }),
       })
-      
+
       const result = await response.json()
-      if (result.data?.updateBookingStatus) {
-        toast({
-          title: "Success",
-          description: "Guest checked in successfully",
-        })
-        onClose()
-      } else {
-        throw new Error("Failed to check in guest")
+
+      if (result.errors) {
+        throw new Error(result.errors[0].message)
       }
+
+      // Update local booking status
+      setBookingData({
+        ...bookingData,
+        bookingStatus: newStatus,
+        ...(newStatus === "CHECKED_IN" ? { checkInTime: new Date().toISOString() } : {}),
+      })
+
+      let successMessage = ""
+      switch (newStatus) {
+        case "PENDING":
+          successMessage = "Booking marked as pending"
+          break
+        case "CONFIRMED":
+          successMessage = "Booking confirmed successfully"
+          break
+        case "CHECKED_IN":
+          successMessage = "Guest successfully checked in"
+          break
+        case "CHECKED_OUT":
+          successMessage = "Guest successfully checked out"
+          break
+        case "CANCELLED":
+          successMessage = "Booking cancelled"
+          break
+        case "NO_SHOW":
+          successMessage = "Guest marked as no-show"
+          break
+        default:
+          successMessage = "Booking status updated"
+      }
+
+      toast({
+        title: "Success",
+        description: successMessage,
+      })
     } catch (error) {
-      console.error("Error during check-in:", error)
+      console.error("Error updating booking status:", error)
       toast({
         title: "Error",
-        description: "Failed to check in guest",
-        variant: "destructive"
+        description: "Failed to update booking status. Please try again.",
+        variant: "destructive",
       })
     } finally {
-      setIsLoading(false)
+      setStatusLoading(false)
     }
   }
 
-  const handleAddBill = () => {
-    setConfirmDialog({
-      open: true,
-      title: "Add Charges",
-      description: "Add additional charges to this booking?",
-      action: async () => {
-        setIsLoading(true)
-        try {
-          const response = await fetch("http://localhost:8000/graphql", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-            },
-            body: JSON.stringify({
-              query: `
-                mutation {
-                  addRoomCharge(
-                    bookingId: "${booking.id}",
-                    input: {
-                      amount: 50,
-                      chargeDate: "${new Date().toISOString()}",
-                      chargeType: "EXTRA_SERVICE",
-                      description: "Room service"
-                    }
-                  ) {
-                    id
-                    totalAmount
-                    roomCharges {
-                      amount
-                      chargeType
-                    }
-                  }
-                }
-              `
-            }),
-          })
-          
-          const result = await response.json()
-          if (result.data?.addRoomCharge) {
-            toast({
-              title: "Success",
-              description: "Charges added successfully",
-            })
-          } else {
-            throw new Error("Failed to add charges")
-          }
-        } catch (error) {
-          console.error("Error adding charges:", error)
-          toast({
-            title: "Error",
-            description: "Failed to add charges",
-            variant: "destructive"
-          })
-        } finally {
-          setIsLoading(false)
-          setConfirmDialog((prev) => ({ ...prev, open: false }))
-        }
-      },
-    })
-  }
-
-  const handleCollectPayment = () => {
-    setConfirmDialog({
-      open: true,
-      title: "Collect Payment",
-      description: "Process payment collection for this booking?",
-      action: async () => {
-        setIsLoading(true)
-        try {
-          const response = await fetch("http://localhost:8000/graphql", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-            },
-            body: JSON.stringify({
-              query: `
-                mutation {
-                  addPayment(
-                    bookingId: "${booking.id}",
-                    input: {
-                      amount: ${booking.pendingAmount || booking.totalAmount},
-                      paymentMethod: "CASH",
-                      transactionId: "${Date.now()}",
-                      transactionDate: "${new Date().toISOString()}"
-                    }
-                  ) {
-                    id
-                    paymentStatus
-                    payments {
-                      amount
-                      status
-                    }
-                  }
-                }
-              `
-            }),
-          })
-          
-          const result = await response.json()
-          if (result.data?.addPayment) {
-            toast({
-              title: "Success",
-              description: "Payment collected successfully",
-            })
-          } else {
-            throw new Error("Failed to collect payment")
-          }
-        } catch (error) {
-          console.error("Error collecting payment:", error)
-          toast({
-            title: "Error",
-            description: "Failed to collect payment",
-            variant: "destructive"
-          })
-        } finally {
-          setIsLoading(false)
-          setConfirmDialog((prev) => ({ ...prev, open: false }))
-        }
-      },
-    })
-  }
-
-  const handlePinRoom = () => {
-    if (!booking.roomId) {
-      toast({
-        title: "Error",
-        description: "No room associated with this booking",
-        variant: "destructive"
-      })
-      return
-    }
-
-    setConfirmDialog({
-      open: true,
-      title: "Pin Room",
-      description: "Are you sure you want to pin this room? This will mark it as a priority for housekeeping.",
-      action: async () => {
-        setIsLoading(true)
-        try {
-          const response = await fetch("http://localhost:8000/graphql", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-            },
-            body: JSON.stringify({
-              query: `
-                mutation {
-                  updateRoom(
-                    roomId: "${booking.roomId}",
-                    input: {
-                      isPinned: true
-                    }
-                  ) {
-                    id
-                    isPinned
-                  }
-                }
-              `
-            }),
-          })
-          
-          const result = await response.json()
-          if (result.data?.updateRoom) {
-            toast({
-              title: "Success",
-              description: "Room pinned successfully",
-            })
-          } else {
-            throw new Error("Failed to pin room")
-          }
-        } catch (error) {
-          console.error("Error pinning room:", error)
-          toast({
-            title: "Error",
-            description: "Failed to pin room",
-            variant: "destructive"
-          })
-        } finally {
-          setIsLoading(false)
-          setConfirmDialog((prev) => ({ ...prev, open: false }))
-        }
-      },
-    })
-  }
-
-  const handleUnpinRoom = () => {
-    if (!booking.roomId) {
-      toast({
-        title: "Error",
-        description: "No room associated with this booking",
-        variant: "destructive"
-      })
-      return
-    }
-    
-    setConfirmDialog({
-      open: true,
-      title: "Unpin Room",
-      description: "Are you sure you want to unpin this room?",
-      action: async () => {
-        setIsLoading(true)
-        try {
-          const response = await fetch("http://localhost:8000/graphql", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-            },
-            body: JSON.stringify({
-              query: `
-                mutation {
-                  updateRoom(
-                    roomId: "${booking.roomId}",
-                    input: {
-                      isPinned: false
-                    }
-                  ) {
-                    id
-                    isPinned
-                  }
-                }
-              `
-            }),
-          })
-          
-          const result = await response.json()
-          if (result.data?.updateRoom) {
-            toast({
-              title: "Success",
-              description: "Room unpinned successfully",
-            })
-          } else {
-            throw new Error("Failed to unpin room")
-          }
-        } catch (error) {
-          console.error("Error unpinning room:", error)
-          toast({
-            title: "Error",
-            description: "Failed to unpin room",
-            variant: "destructive"
-          })
-        } finally {
-          setIsLoading(false)
-          setConfirmDialog((prev) => ({ ...prev, open: false }))
-        }
-      },
-    })
-  }
-
-  const handleUpdateRoom = () => {
-    if (!booking.roomId) {
-      toast({
-        title: "Error",
-        description: "No room associated with this booking",
-        variant: "destructive"
-      })
-      return
-    }
-    
-    setConfirmDialog({
-      open: true,
-      title: "Update Room Status",
-      description: "Update the room status for this booking?",
-      action: async () => {
-        setIsLoading(true)
-        try {
-          const response = await fetch("http://localhost:8000/graphql", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
-            },
-            body: JSON.stringify({
-              query: `
-                mutation {
-                  updateRoom(
-                    roomId: "${booking.roomId}",
-                    input: {
-                      status: "MAINTENANCE"
-                    }
-                  ) {
-                    id
-                    status
-                  }
-                }
-              `
-            }),
-          })
-          
-          const result = await response.json()
-          if (result.data?.updateRoom) {
-            toast({
-              title: "Success",
-              description: "Room status updated successfully",
-            })
-          } else {
-            throw new Error("Failed to update room status")
-          }
-        } catch (error) {
-          console.error("Error updating room status:", error)
-          toast({
-            title: "Error",
-            description: "Failed to update room status",
-            variant: "destructive"
-          })
-        } finally {
-          setIsLoading(false)
-          setConfirmDialog((prev) => ({ ...prev, open: false }))
-        }
-      },
-    })
-  }
-
-  const formatDate = (dateString: string) => {
+  const handleExtendBooking = async (newCheckOutDate: string) => {
+    setExtendLoading(true)
     try {
-      return format(parseISO(dateString), "dd MMM - dd MMM")
-    } catch (e) {
-      return "Invalid date"
-    }
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-    }).format(amount)
-  }
-
-  const handleAddNote = async (note: string) => {
-    setIsLoading(true)
-    try {
-      const response = await fetch("http://localhost:8000/graphql", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${(session as any)?.accessToken || ''}`
         },
         body: JSON.stringify({
           query: `
-            mutation {
-              updateBooking(
-                bookingId: "${booking.id}",
-                input: {
-                  notes: "${note}"
-                }
+            mutation ExtendBooking($bookingId: String!, $newCheckOutDate: String!, $notes: String) {
+              extendBooking(
+                bookingId: $bookingId
+                newCheckOutDate: $newCheckOutDate
+                notes: $notes
               ) {
                 id
-                notes
+                bookingNumber
+                checkInDate
+                checkOutDate
+                totalAmount
+                updatedAt
               }
             }
-          `
+          `,
+          variables: {
+            bookingId: booking,
+            newCheckOutDate,
+            notes: "Guest extended stay",
+          },
         }),
       })
-      
+
       const result = await response.json()
-      if (result.data?.updateBooking) {
-        toast({
-          title: "Success",
-          description: "Note added successfully",
-        })
-      } else {
-        throw new Error("Failed to add note")
+
+      if (result.errors) {
+        throw new Error(result.errors[0].message)
       }
+
+      // Update local booking data
+      setBookingData({
+        ...bookingData,
+        checkOutDate: result.data.extendBooking.checkOutDate,
+        totalAmount: result.data.extendBooking.totalAmount,
+      })
+
+      setIsExtendModalOpen(false)
+      toast({
+        title: "Success",
+        description: "Booking successfully extended!",
+      })
     } catch (error) {
-      console.error("Error adding note:", error)
+      console.error("Error extending booking:", error)
       toast({
         title: "Error",
-        description: "Failed to add note",
-        variant: "destructive"
+        description: "Failed to extend booking. Please try again.",
+        variant: "destructive",
       })
     } finally {
-      setIsLoading(false)
+      setExtendLoading(false)
     }
   }
+
+  const handleCollectPayment = async () => {
+    setCollectPaymentLoading(true)
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: `
+            mutation AddPayment($bookingId: String!, $paymentData: PaymentInput!) {
+              addPayment(
+                bookingId: $bookingId
+                paymentData: $paymentData
+              ) {
+                id
+                bookingNumber
+                paymentStatus
+                totalAmount
+              }
+            }
+          `,
+          variables: {
+            bookingId: booking,
+            paymentData: {
+              method: "credit_card",
+              amount: bookingData?.totalAmount || 0,
+              transactionId: `txn_${Date.now()}`,
+              notes: "Full payment collected at check-in",
+            },
+          },
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.errors) {
+        throw new Error(result.errors[0].message)
+      }
+
+      // Update local booking data
+      setBookingData({
+        ...bookingData,
+        paymentStatus: result.data.addPayment.paymentStatus,
+      })
+
+      toast({
+        title: "Success",
+        description: "Payment successfully collected!",
+      })
+    } catch (error) {
+      console.error("Error collecting payment:", error)
+      toast({
+        title: "Error",
+        description: "Failed to process payment. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setCollectPaymentLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+      </div>
+    )
+  }
+
+  if (!bookingData) {
+    return (
+      <div className="container mx-auto">
+        <Button variant="ghost" onClick={onBack} className="mb-4">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Bookings
+        </Button>
+        <div className="text-center p-8">
+          <h2 className="text-xl font-semibold">Booking Not Found</h2>
+          <p className="text-gray-500 mt-2">The requested booking could not be found.</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Calculate nights between dates
+  const calculateNights = (checkInDate: string, checkOutDate: string): number => {
+    if (!checkInDate || !checkOutDate) return 1
+
+    const checkIn = new Date(checkInDate)
+    const checkOut = new Date(checkOutDate)
+
+    const diffTime = Math.abs(checkOut.getTime() - checkIn.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    return diffDays || 1
+  }
+
+  // Format date
+  const formatDate = (dateString: string): string => {
+    if (!dateString) return ""
+
+    const date = new Date(dateString)
+    return format(date, "dd MMM")
+  }
+
+  // Get status icon and color
+  const getStatusDetails = (status: string) => {
+    switch (status) {
+      case "PENDING":
+        return { icon: <AlertCircle className="h-5 w-5" />, color: "text-yellow-500 bg-yellow-50" }
+      case "CONFIRMED":
+        return { icon: <CheckCircle className="h-5 w-5" />, color: "text-blue-500 bg-blue-50" }
+      case "CHECKED_IN":
+        return { icon: <CheckCircle className="h-5 w-5" />, color: "text-green-500 bg-green-50" }
+      case "CHECKED_OUT":
+        return { icon: <LogOut className="h-5 w-5" />, color: "text-purple-500 bg-purple-50" }
+      case "CANCELLED":
+        return { icon: <XCircle className="h-5 w-5" />, color: "text-red-500 bg-red-50" }
+      case "NO_SHOW":
+        return { icon: <XCircle className="h-5 w-5" />, color: "text-orange-500 bg-orange-50" }
+      default:
+        return { icon: <AlertCircle className="h-5 w-5" />, color: "text-gray-500 bg-gray-50" }
+    }
+  }
+
+  const statusDetails = getStatusDetails(bookingData.bookingStatus)
 
   return (
-    <Card className="fixed inset-y-0 right-0 w-full max-w-md shadow-xl border-l z-50 overflow-auto">
-      <div className="sticky top-0 bg-background z-10 border-b">
-        <div className="flex justify-between items-center p-4">
-          <h3 className="text-lg font-semibold">Room {booking.roomNumber}</h3>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="w-full">
-            <TabsTrigger value="booking-details" className="flex-1">
-              Booking Details
-            </TabsTrigger>
-            <TabsTrigger value="notes" className="flex-1">
-              Notes/To Do
-            </TabsTrigger>
-            {roomDetails && (
-              <TabsTrigger value="room-details" className="flex-1">
-                Room Info
-              </TabsTrigger>
-            )}
-          </TabsList>
-        </Tabs>
-      </div>
-
-      <CardContent className="p-0">
-        <TabsContent value="booking-details" className="m-0">
-          <div className="p-4 border-b">
-            <div className="flex justify-between items-start">
-              <div>
-                <h2 className="text-xl font-bold">
-                  {booking.guest.firstName} {booking.guest.lastName}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {booking.guest.email}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-medium">{booking.bookingNumber}</p>
-                <p className="text-xs text-muted-foreground">
-                  {booking.externalReference ? `Booking.com #${booking.externalReference}` : "Direct Booking"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 border-b">
-            <div className="flex justify-between items-center mb-2">
-              <div>
-                <p className="text-sm font-medium">Dates</p>
-                <p className="text-base">{formatDate(`${booking.checkInDate}`)}</p>
-                <p className="text-sm">{booking.roomNumber}</p>
-              </div>
-              <Button variant="outline" size="sm" onClick={handleModifyDates}>
-                Modify
-              </Button>
-            </div>
-          </div>
-
-          <div className="p-4 border-b">
-            <div className="flex justify-between items-center mb-2">
-              <div>
-                <p className="text-sm font-medium">Guests</p>
-                <p className="text-base">
-                  {booking.numberOfGuests} Adults, {booking.children || 0} Kids
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={handleChangeOccupancy}>
-                Change Occupancy
-              </Button>
-            </div>
-          </div>
-
-          <div className="p-4 border-b">
-            <div className="mb-2">
-              <p className="text-sm font-medium">Total Bill</p>
-              <p className="text-xl font-bold">{formatCurrency(booking.totalAmount)}</p>
-            </div>
-            <div className="mb-2">
-              <p className="text-sm font-medium">Pending Amount</p>
-              <p className="text-base">{formatCurrency(booking.pendingAmount || 0)}</p>
-            </div>
-          </div>
-
-          <div className="p-4 grid grid-cols-2 gap-3">
-            {booking.bookingStatus === "CHECKED_IN" && (
-              <Button 
-                className="bg-red-500 hover:bg-red-600 text-white" 
-                onClick={handleCheckout} 
-                disabled={isLoading}
-              >
-                Checkout
-              </Button>
-            )}
-            {booking.bookingStatus === "CONFIRMED" && (
-              <Button 
-                className="bg-green-500 hover:bg-green-600 text-white" 
-                onClick={handleCheckin} 
-                disabled={isLoading}
-              >
-                Checkin
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setActiveTab("notes")}>
-              View Notes
-            </Button>
-            {roomDetails && (
-              <Button variant="outline" onClick={() => setActiveTab("room-details")}>
-                Room Details
-              </Button>
-            )}
-          </div>
-
-          <div className="p-4 grid grid-cols-3 gap-3">
-            <Button variant="outline" size="sm" onClick={handleAddBill}>
-              Add Bill
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleCollectPayment}>
-              Collect Payment
-            </Button>
-            {booking.bookingStatus !== "CHECKED_IN" && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleCheckin}
-                disabled={booking.bookingStatus === "CHECKED_OUT" || booking.bookingStatus === "CANCELLED"}
-              >
-                Checkin
-              </Button>
-            )}
-          </div>
-
-          <div className="p-4 grid grid-cols-3 gap-3">
-            <Button variant="outline" size="sm" onClick={handlePinRoom}>
-              Pin Room
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleUnpinRoom}>
-              Unpin Room
-            </Button>
-            <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600" onClick={handleUpdateRoom}>
-              Update Room
-            </Button>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="notes" className="m-0 p-4">
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Notes</h3>
-            <div className="border rounded-md p-3 bg-muted/30">
-              <p className="text-sm">{booking.notes || "No notes available for this booking."}</p>
-            </div>
-
-            <h3 className="text-lg font-medium mt-6">To Do</h3>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="todo-1" className="rounded" />
-                <label htmlFor="todo-1" className="text-sm">
-                  Prepare welcome package
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="todo-2" className="rounded" />
-                <label htmlFor="todo-2" className="text-sm">
-                  Verify payment method
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="todo-3" className="rounded" />
-                <label htmlFor="todo-3" className="text-sm">
-                  Check special requests
-                </label>
-              </div>
-            </div>
-
-            <div className="pt-4">
-              <Button className="w-full" onClick={() => {
-                const note = prompt("Enter a new note:");
-                if (note) handleAddNote(note);
-              }}>
-                Add New Note
-              </Button>
-            </div>
-          </div>
-        </TabsContent>
-
-        {roomDetails && (
-          <TabsContent value="room-details" className="m-0 p-4">
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium">Room Information</h3>
-              
-              <div className="grid grid-cols-2 gap-3">
+    <div className="container mx-auto">
+      <Button variant="ghost" onClick={onBack} className="mb-4">
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Bookings
+      </Button>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader className="border-b">
+              <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Room Number</p>
-                  <p className="font-medium">{roomDetails.roomNumber}</p>
+                  <p className="text-sm text-gray-500">
+                    Bookings {`>`} {bookingData.bookingNumber}
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold">
+                    {bookingData.guest?.firstName} {bookingData.guest?.lastName}
+                  </h2>
                 </div>
+                <Button variant="ghost" size="icon">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="mb-6 flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Room Type</p>
-                  <p className="font-medium">{roomDetails.roomType}</p>
+                  <h3 className="text-lg font-medium">
+                    {bookingData.guest?.firstName} {bookingData.guest?.lastName}
+                  </h3>
+                  <p className="text-gray-500">
+                    {bookingData.numberOfGuests || 1} {bookingData.numberOfGuests === 1 ? "Guest" : "Guests"} ·
+                    {bookingData.roomTypeBookings?.[0]?.numberOfRooms || 1}{" "}
+                    {bookingData.roomTypeBookings?.[0]?.numberOfRooms === 1 ? "Room" : "Rooms"} ·
+                    {calculateNights(bookingData.checkInDate, bookingData.checkOutDate)}{" "}
+                    {calculateNights(bookingData.checkInDate, bookingData.checkOutDate) === 1 ? "Night" : "Nights"}
+                  </p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Floor</p>
-                  <p className="font-medium">{roomDetails.floor}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Status</p>
-                  <p className="font-medium">{roomDetails.status}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Bed Type</p>
-                  <p className="font-medium">{roomDetails.bedType || "N/A"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Price</p>
-                  <p className="font-medium">{formatCurrency(roomDetails.pricePerNight)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Max Occupancy</p>
-                  <p className="font-medium">{roomDetails.maxOccupancy || "N/A"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Room Size</p>
-                  <p className="font-medium">{roomDetails.roomSize ? `${roomDetails.roomSize} sqm` : "N/A"}</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="text-red-500">
+                    Edit Details
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button className="bg-green-500 hover:bg-green-600" disabled={statusLoading}>
+                        {statusLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Change Status <ChevronDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuLabel>Set Booking Status</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={bookingData.bookingStatus === "PENDING"}
+                        onClick={() => handleStatusChange("PENDING")}
+                        className="text-yellow-500 focus:text-yellow-500 focus:bg-yellow-50"
+                      >
+                        <AlertCircle className="mr-2 h-4 w-4" /> Pending
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={bookingData.bookingStatus === "CONFIRMED"}
+                        onClick={() => handleStatusChange("CONFIRMED")}
+                        className="text-blue-500 focus:text-blue-500 focus:bg-blue-50"
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4" /> Confirmed
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={bookingData.bookingStatus === "CHECKED_IN"}
+                        onClick={() => handleStatusChange("CHECKED_IN")}
+                        className="text-green-500 focus:text-green-500 focus:bg-green-50"
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4" /> Check In
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={bookingData.bookingStatus === "CHECKED_OUT"}
+                        onClick={() => handleStatusChange("CHECKED_OUT")}
+                        className="text-purple-500 focus:text-purple-500 focus:bg-purple-50"
+                      >
+                        <LogOut className="mr-2 h-4 w-4" /> Check Out
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={bookingData.bookingStatus === "CANCELLED"}
+                        onClick={() => handleStatusChange("CANCELLED")}
+                        className="text-red-500 focus:text-red-500 focus:bg-red-50"
+                      >
+                        <XCircle className="mr-2 h-4 w-4" /> Cancel Booking
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={bookingData.bookingStatus === "NO_SHOW"}
+                        onClick={() => handleStatusChange("NO_SHOW")}
+                        className="text-orange-500 focus:text-orange-500 focus:bg-orange-50"
+                      >
+                        <XCircle className="mr-2 h-4 w-4" /> Mark as No-Show
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
-              {roomDetails.amenities && roomDetails.amenities.length > 0 && (
-                <div>
-                  <h4 className="text-md font-medium mt-4 mb-2">Amenities</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {roomDetails.amenities.map((amenity, index) => (
-                      <span key={index} className="px-2 py-1 bg-muted rounded-md text-xs">
-                        {amenity}
-                      </span>
-                    ))}
+              <div className="grid gap-4">
+                <div className="grid grid-cols-2 gap-4 rounded-lg border p-4">
+                  <div>
+                    <p className="font-medium">
+                      {calculateNights(bookingData.checkInDate, bookingData.checkOutDate)}
+                      {calculateNights(bookingData.checkInDate, bookingData.checkOutDate) === 1 ? " Night" : " Nights"}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {formatDate(bookingData.checkInDate)} - {formatDate(bookingData.checkOutDate)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <Button
+                      variant="link"
+                      className="text-red-500"
+                      onClick={() => setIsExtendModalOpen(true)}
+                      disabled={extendLoading}
+                    >
+                      {extendLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Extend
+                    </Button>
                   </div>
                 </div>
-              )}
 
-              {roomDetails.description && (
-                <div>
-                  <h4 className="text-md font-medium mt-4 mb-2">Description</h4>
-                  <p className="text-sm">{roomDetails.description}</p>
+                <div className="grid grid-cols-2 gap-4 rounded-lg border p-4">
+                  <div>
+                    <p className="font-medium">{bookingData.numberOfGuests || 1} Guests</p>
+                    <p className="text-sm text-gray-500">
+                      {bookingData.numberOfGuests || 1} {bookingData.numberOfGuests === 1 ? "Adult" : "Adults"}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">Email: {bookingData.guest?.email}</p>
+                  </div>
                 </div>
-              )}
 
-              {roomDetails.lastCleaned && (
-                <div>
-                  <h4 className="text-md font-medium mt-4 mb-2">Housekeeping</h4>
-                  <p className="text-sm">Last Cleaned: {format(parseISO(roomDetails.lastCleaned), "dd MMM yyyy")}</p>
-                  {roomDetails.lastMaintained && (
-                    <p className="text-sm">Last Maintained: {format(parseISO(roomDetails.lastMaintained), "dd MMM yyyy")}</p>
-                  )}
-                  {roomDetails.maintenanceNotes && (
-                    <p className="text-sm mt-2">Maintenance Notes: {roomDetails.maintenanceNotes}</p>
-                  )}
+                <div className="grid grid-cols-2 gap-4 rounded-lg border p-4">
+                  <div>
+                    <p className="font-medium">Room 1</p>
+                    <p className="text-sm text-gray-500">
+                      {formatDate(bookingData.checkInDate)} - {formatDate(bookingData.checkOutDate)}
+                      <br />
+                      {bookingData.roomType}
+                      <br />
+                      {bookingData.numberOfGuests || 1} PAX
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <Button variant="link" className="text-red-500" onClick={() => setIsUpgradeModalOpen(true)}>
+                      Change
+                    </Button>
+                  </div>
                 </div>
-              )}
-            </div>
-          </TabsContent>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-1">
+          <Card>
+            <CardHeader className="border-b">
+              <div className="flex items-center justify-between">
+                <CardTitle>Price Summary</CardTitle>
+                <span className="text-sm text-green-500">
+                  {bookingData.paymentStatus === "PAID" ? "Paid" : "Pay at Hotel"}
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="mb-6">
+                <Button variant="outline" className="w-full justify-between">
+                  <span>Total Bill</span>
+                  <span>${Number(bookingData.totalAmount).toLocaleString()}</span>
+                </Button>
+                <div className="mt-4 px-4">
+                  <div className="flex justify-between py-2">
+                    <span className="text-gray-600">{bookingData.roomType}</span>
+                    <span>${Number(bookingData.totalAmount).toLocaleString()}</span>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {bookingData.roomTypeBookings?.[0]?.numberOfRooms || 1} Room ×
+                    {calculateNights(bookingData.checkInDate, bookingData.checkOutDate)} Nights × $
+                    {(
+                      Number(bookingData.totalAmount) /
+                      (calculateNights(bookingData.checkInDate, bookingData.checkOutDate) *
+                        (bookingData.roomTypeBookings?.[0]?.numberOfRooms || 1))
+                    ).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between border-t pt-4">
+                <span>Payment Collected</span>
+                <span>$0</span>
+              </div>
+
+              <div className="mt-4 flex justify-between border-t pt-4">
+                <span>Security Deposit</span>
+                <span>-</span>
+              </div>
+
+              <div className="mt-4 flex justify-between border-t pt-4">
+                <span>Balance to Collect</span>
+                <span className="font-medium">${Number(bookingData.totalAmount).toLocaleString()}</span>
+              </div>
+
+              <Button
+                className="mt-6 w-full bg-green-500 hover:bg-green-600"
+                onClick={handleCollectPayment}
+                disabled={collectPaymentLoading}
+              >
+                {collectPaymentLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Collect Payment
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {isUpgradeModalOpen && (
+          <RoomUpgradeModal
+            onClose={() => setIsUpgradeModalOpen(false)}
+            bookingId={booking}
+            currentRoomType={bookingData.roomType}
+          />
         )}
-      </CardContent>
-
-      <Dialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{confirmDialog.title}</DialogTitle>
-            <DialogDescription>{confirmDialog.description}</DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setConfirmDialog((prev) => ({ ...prev, open: false }))}>
-              Cancel
-            </Button>
-            <Button onClick={confirmDialog.action} disabled={isLoading}>
-              {isLoading ? "Processing..." : "Confirm"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </Card>
+      </AnimatePresence>
+    </div>
   )
 }

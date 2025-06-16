@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import Link from "next/link"
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -13,6 +15,7 @@ import {
   ClipboardList,
   Settings,
   LucideLayoutDashboard,
+  Tag,
 } from "lucide-react"
 import { useLayout } from "@/providers/layout-providers"
 
@@ -30,6 +33,7 @@ const menuItems: MenuItem[] = [
   { name: "Hotel-Setup", icon: TrendingUp, href: "/hotels/settings" },
   { name: "Calendar", icon: Calendar, href: "/calendar" },
   { name: "Room-Setup", icon: ClipboardList, href: "/room/manage" },
+  { name: "Pricing", icon: Tag, href: "/pricing" },
   { name: "Settings", icon: Settings, href: "/settings" },
 ]
 
@@ -76,15 +80,13 @@ export function DashboardSidebar() {
       </div>
       <div className="px-3 py-4 my-3">
         {menuItems.map((item) => {
-          const active = isActive(item.href);
+          const active = isActive(item.href)
           return (
             <Link key={item.name} href={item.href} className="block">
               <motion.div
                 whileHover={{ scale: 1.02 }}
                 className={`group mb-2 flex cursor-pointer items-center rounded-lg p-2 transition-colors ${
-                  active 
-                    ? "bg-gray-700 text-white" 
-                    : "text-gray-300 hover:bg-gray-800"
+                  active ? "bg-gray-700 text-white" : "text-gray-300 hover:bg-gray-800"
                 }`}
               >
                 <item.icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
@@ -102,7 +104,7 @@ export function DashboardSidebar() {
                 </AnimatePresence>
               </motion.div>
             </Link>
-          );
+          )
         })}
       </div>
     </motion.div>
