@@ -1,5 +1,5 @@
 "use client"
-import { useMutation } from "@apollo/client"
+import { useMutation, useQuery } from "@apollo/client"
 import { CREATE_BOOKING } from "@/graphql/booking/mutations"
 import { useForm, useFieldArray, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -21,6 +21,17 @@ import { useHotelContext } from "@/providers/hotel-provider"
 
 // Room types from backend enum
 const ROOM_TYPES = ["STANDARD", "DELUXE", "SUITE", "EXECUTIVE", "PRESIDENTIAL"] as const
+
+// GraphQL query to fetch room pricing
+const GET_ROOM_PRICING = gql`
+  query GetRooms($hotelId: String!) {
+    rooms(hotelId: $hotelId, limit: 100, offset: 0) {
+      id
+      roomType
+      pricePerNight
+    }
+  }
+`
 
 const bookingSourceOptions = [
   { value: "WEBSITE", label: "Website" },
@@ -75,84 +86,70 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
   // Access hotel context
   const { selectedHotel } = useHotelContext()
 
-  // Fetch pricing data
+  // Fetch pricing data using Apollo Client
+  const { data: roomPricingData, loading: roomPricingLoading, refetch: refetchRoomPricing } = useQuery(GET_ROOM_PRICING, {
+    variables: { hotelId: selectedHotel?.id },
+    skip: !selectedHotel?.id,
+    fetchPolicy: "network-only", // Don't use cache to ensure we get the latest pricing
+  })
+
+  // Process room pricing data when it's available
   useEffect(() => {
-    if (selectedHotel?.id) {
-      fetchPricingData()
+    if (roomPricingData?.rooms) {
+      processPricingData(roomPricingData.rooms)
     }
-  }, [selectedHotel])
+  }, [roomPricingData])
 
-  const fetchPricingData = async () => {
+  // Process the pricing data from GraphQL
+  const processPricingData = (rooms: any[]) => {
     setPricingLoading(true)
-
     try {
-      const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT || "http://localhost:8000/graphql"
+      // Group rooms by type and calculate pricing
+      const roomTypeGroups = rooms.reduce((acc: any, room: any) => {
+        const roomType = room.roomType
+        if (!acc[roomType]) {
+          acc[roomType] = {
+            prices: [],
+            totalRooms: 0,
+          }
+        }
+        acc[roomType].prices.push(room.pricePerNight || 1000)
+        acc[roomType].totalRooms += 1
+        return acc
+      }, {})
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query: `
-  query {
-    rooms(
-      hotelId: "${selectedHotel?.id}"
-      limit: 100
-      offset: 0
-    ) {
-      id
-      roomType
-      pricePerNight
-    }
-  }
-`,
-        }),
+      // Calculate pricing data for each room type
+      const pricingMap: Record<string, { basePrice: number; minPrice: number; maxPrice: number }> = {}
+
+      Object.entries(roomTypeGroups).forEach(([typeName, data]: [string, any]) => {
+        const avgPrice = data.prices.reduce((sum: number, price: number) => sum + price, 0) / data.totalRooms
+
+        pricingMap[typeName] = {
+          basePrice: Math.round(avgPrice),
+          minPrice: Math.round(avgPrice * 0.5), // 50% of avg as min
+          maxPrice: Math.round(avgPrice * 2), // 200% of avg as max
+        }
       })
 
-      const result = await response.json()
-
-      if (result.data && result.data.rooms) {
-        // Group rooms by type and calculate pricing
-        const roomTypeGroups = result.data.rooms.reduce((acc: any, room: any) => {
-          const roomType = room.roomType
-          if (!acc[roomType]) {
-            acc[roomType] = {
-              prices: [],
-              totalRooms: 0,
-            }
-          }
-          acc[roomType].prices.push(room.pricePerNight || 1000)
-          acc[roomType].totalRooms += 1
-          return acc
-        }, {})
-
-        // Calculate pricing data for each room type
-        const pricingMap: Record<string, { basePrice: number; minPrice: number; maxPrice: number }> = {}
-
-        Object.entries(roomTypeGroups).forEach(([typeName, data]: [string, any]) => {
-          const avgPrice = data.prices.reduce((sum: number, price: number) => sum + price, 0) / data.totalRooms
-
-          pricingMap[typeName] = {
-            basePrice: Math.round(avgPrice),
-            minPrice: Math.round(avgPrice * 0.5), // 50% of avg as min
-            maxPrice: Math.round(avgPrice * 2), // 200% of avg as max
-          }
-        })
-
-        setPricingData(pricingMap)
-      }
+      setPricingData(pricingMap)
     } catch (error) {
-      console.error("Error fetching pricing data:", error)
+      console.error("Error processing pricing data:", error)
       toast({
         title: "Warning",
-        description: "Could not load pricing data. Using default prices.",
+        description: "Could not process pricing data. Using default prices.",
         variant: "destructive",
       })
     } finally {
       setPricingLoading(false)
     }
   }
+
+  // Refetch pricing data when hotel changes
+  useEffect(() => {
+    if (selectedHotel?.id) {
+      refetchRoomPricing()
+    }
+  }, [selectedHotel, refetchRoomPricing])
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
@@ -226,7 +223,7 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
     }
   }
 
-  if (pricingLoading) {
+  if (pricingLoading || roomPricingLoading) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="flex items-center space-x-2">

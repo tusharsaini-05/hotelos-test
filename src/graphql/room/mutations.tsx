@@ -4,8 +4,8 @@ export const CREATE_ROOM = gql`
   mutation CreateRoom($roomData: RoomInput!) {
     createRoom(roomData: $roomData) {
       id
-      name
-      type
+      roomNumber
+      roomType
       status
       pricePerNight
       amenities
@@ -17,8 +17,8 @@ export const UPDATE_ROOM = gql`
   mutation UpdateRoom($id: String!, $roomData: RoomUpdateInput!) {
     updateRoom(id: $id, roomData: $roomData) {
       id
-      name
-      type
+      roomNumber
+      roomType
       status
       pricePerNight
     }
