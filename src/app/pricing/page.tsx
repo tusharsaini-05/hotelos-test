@@ -34,9 +34,6 @@ interface RoomType {
   maxPrice: number
   available: number
   roomIds: string[]
-  // Store original price ratios for consistent updates
-  minPriceRatio?: number
-  maxPriceRatio?: number
 }
 
 interface WeekendRate {
@@ -45,9 +42,6 @@ interface WeekendRate {
   minPrice: number
   maxPrice: number
   enabled: boolean
-  // Store original price ratios for consistent updates
-  minPriceRatio?: number
-  maxPriceRatio?: number
 }
 
 // Debounce hook for delayed validation
@@ -187,10 +181,6 @@ export default function PricingPage() {
             const basePrice = Math.round(avgPrice)
             const minPrice = Math.round(avgPrice * 0.5) // 50% of avg price as min
             const maxPrice = Math.round(avgPrice * 2) // 200% of avg price as max
-            
-            // Store the price ratios for consistent updates
-            const minPriceRatio = 0.5 // 50% of base price
-            const maxPriceRatio = 2.0 // 200% of base price
 
             return {
               id: typeName.toLowerCase().replace(/\s+/g, "-"),
@@ -199,9 +189,7 @@ export default function PricingPage() {
               minPrice: minPrice,
               maxPrice: maxPrice,
               available: data.totalRooms,
-              roomIds: data.roomIds,
-              minPriceRatio,
-              maxPriceRatio
+              roomIds: data.roomIds
             }
           },
         )
@@ -221,9 +209,7 @@ export default function PricingPage() {
             price: weekendPrice,
             minPrice: Math.round(room.minPrice * weekendRatio),
             maxPrice: Math.round(room.maxPrice * weekendRatio),
-            enabled: true,
-            minPriceRatio: room.minPriceRatio,
-            maxPriceRatio: room.maxPriceRatio
+            enabled: true
           }
         })
 
@@ -291,26 +277,7 @@ export default function PricingPage() {
     setEditableRoomTypes((prev) => {
       return prev.map((room) => {
         if (room.id === id) {
-          const updatedRoom = { ...room, [field]: numValue }
-          
-          // If base price is changing, update min and max prices proportionally
-          if (field === "price") {
-            // Only update min/max if we have the ratios
-            if (room.minPriceRatio && room.maxPriceRatio) {
-              updatedRoom.minPrice = Math.round(numValue * room.minPriceRatio)
-              updatedRoom.maxPrice = Math.round(numValue * room.maxPriceRatio)
-            }
-          }
-          // If min price is changing, update the ratio
-          else if (field === "minPrice") {
-            updatedRoom.minPriceRatio = numValue / room.price
-          }
-          // If max price is changing, update the ratio
-          else if (field === "maxPrice") {
-            updatedRoom.maxPriceRatio = numValue / room.price
-          }
-          
-          return updatedRoom
+          return { ...room, [field]: numValue }
         }
         return room
       })
@@ -325,26 +292,7 @@ export default function PricingPage() {
       setEditableWeekendRates((prev) => {
         return prev.map((rate) => {
           if (rate.roomId === roomId) {
-            const updatedRate = { ...rate, [field]: numValue }
-            
-            // If base price is changing, update min and max prices proportionally
-            if (field === "price") {
-              // Only update min/max if we have the ratios
-              if (rate.minPriceRatio && rate.maxPriceRatio) {
-                updatedRate.minPrice = Math.round(numValue * rate.minPriceRatio)
-                updatedRate.maxPrice = Math.round(numValue * rate.maxPriceRatio)
-              }
-            }
-            // If min price is changing, update the ratio
-            else if (field === "minPrice") {
-              updatedRate.minPriceRatio = numValue / rate.price
-            }
-            // If max price is changing, update the ratio
-            else if (field === "maxPrice") {
-              updatedRate.maxPriceRatio = numValue / rate.price
-            }
-            
-            return updatedRate
+            return { ...rate, [field]: numValue }
           }
           return rate
         })
