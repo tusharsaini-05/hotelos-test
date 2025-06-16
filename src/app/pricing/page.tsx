@@ -26,6 +26,18 @@ const UPDATE_ROOM_PRICING = gql`
   }
 `
 
+// GraphQL mutation for updating room pricing configuration
+const UPDATE_ROOM_PRICING_CONFIG = gql`
+  mutation UpdateRoomPricingConfig($hotelId: String!, $roomType: String!, $basePrice: Float!, $minPrice: Float!, $maxPrice: Float!) {
+    updateRoomPricingConfig(hotelId: $hotelId, roomType: $roomType, basePrice: $basePrice, minPrice: $minPrice, maxPrice: $maxPrice) {
+      roomType
+      basePrice
+      minPrice
+      maxPrice
+    }
+  }
+`
+
 interface RoomType {
   id: string
   roomType: string
@@ -100,6 +112,16 @@ export default function PricingPage() {
     }
   })
 
+  // Setup mutation for room pricing configuration
+  const [updateRoomPricingConfig] = useMutation(UPDATE_ROOM_PRICING_CONFIG, {
+    onCompleted: (data) => {
+      console.log("Room pricing configuration updated successfully:", data)
+    },
+    onError: (error) => {
+      console.error("Error updating room pricing configuration:", error)
+    }
+  })
+
   // Debounced temp prices for validation
   const debouncedTempPrices = useDebounce(tempPrices, 800) // 800ms delay
 
@@ -109,7 +131,7 @@ export default function PricingPage() {
     }
   }, [selectedHotel])
 
-  // Fetch rooms using the same logic as booking analytics
+  // Fetch rooms using the correct GraphQL schema
   const fetchRooms = async () => {
     setRoomsLoading(true)
 
@@ -171,16 +193,69 @@ export default function PricingPage() {
           return acc
         }, {})
 
+        // Now fetch the pricing configuration
+        const pricingResponse = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            query: `
+  query {
+    roomPricing(hotelId: "${selectedHotel?.id}") {
+      roomType
+      basePrice
+      minPrice
+      maxPrice
+    }
+  }
+`,
+          }),
+        })
+
+        const pricingResult = await pricingResponse.json()
+        const pricingConfig = pricingResult.data?.roomPricing || []
+        
         // Calculate pricing data for each room type
         const roomTypesForPricing: RoomType[] = Object.entries(roomTypeGroups).map(
           ([typeName, data]: [string, any]) => {
             const avgPrice =
               data.rooms.reduce((sum: number, room: any) => sum + (room.pricePerNight || 1000), 0) / data.totalRooms
 
+            // Check if we have pricing configuration for this room type
+            const pricingConfig = pricingResult.data?.roomPricing?.find(
+              (p: any) => p.roomType === typeName
+            )
+
             // Calculate base price and min/max prices
-            const basePrice = Math.round(avgPrice)
-            const minPrice = Math.round(avgPrice * 0.5) // 50% of avg price as min
-            const maxPrice = Math.round(avgPrice * 2) // 200% of avg price as max
+            let basePrice, minPrice, maxPrice;
+            
+            if (pricingConfig) {
+              // Use the configured pricing
+              basePrice = pricingConfig.basePrice
+              minPrice = pricingConfig.minPrice
+              maxPrice = pricingConfig.maxPrice
+            } else {
+              // Use default calculations
+              basePrice = Math.round(avgPrice)
+              minPrice = Math.round(avgPrice * 0.5) // 50% of avg price as min
+              maxPrice = Math.round(avgPrice * 2) // 200% of avg price as max
+              
+              // Special cases for specific room types
+              if (typeName === "STANDARD") {
+                basePrice = 500
+                minPrice = 250
+                maxPrice = 1000
+              } else if (typeName === "DELUXE") {
+                basePrice = 300
+                minPrice = 150
+                maxPrice = 600
+              } else if (typeName === "SUITE") {
+                basePrice = 2000
+                minPrice = 1000
+                maxPrice = 4000
+              }
+            }
 
             return {
               id: typeName.toLowerCase().replace(/\s+/g, "-"),
@@ -267,7 +342,7 @@ export default function PricingPage() {
   const handlePriceChange = useCallback((id: string, field: "price" | "minPrice" | "maxPrice", value: string) => {
     const numValue = Number.parseFloat(value) || 0
 
-    // Update temp prices for debounced validation
+    // Update temp prices for validation
     setTempPrices((prev) => ({
       ...prev,
       [`${id}-${field}`]: numValue,
@@ -321,7 +396,18 @@ export default function PricingPage() {
 
         // Update each room's price in the backend
         for (const roomType of editableRoomTypes) {
-          // For each room ID in this room type
+          // First, update the pricing configuration
+          await updateRoomPricingConfig({
+            variables: {
+              hotelId: selectedHotel?.id,
+              roomType: roomType.roomType,
+              basePrice: roomType.price,
+              minPrice: roomType.minPrice,
+              maxPrice: roomType.maxPrice
+            }
+          })
+          
+          // Then update each room's price in the backend
           for (const roomId of roomType.roomIds) {
             await updateRoomPricing({
               variables: {

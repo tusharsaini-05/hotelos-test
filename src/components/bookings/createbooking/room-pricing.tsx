@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Save, RefreshCw, Loader2 } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
 import { useHotelContext } from "@/providers/hotel-provider"
 import { useMutation } from "@apollo/client"
 import { gql } from "@apollo/client"
@@ -19,6 +21,18 @@ const UPDATE_ROOM_PRICING = gql`
       id
       pricePerNight
       extraBedPrice
+    }
+  }
+`
+
+// GraphQL mutation for updating room pricing configuration
+const UPDATE_ROOM_PRICING_CONFIG = gql`
+  mutation UpdateRoomPricingConfig($hotelId: String!, $roomType: String!, $basePrice: Float!, $minPrice: Float!, $maxPrice: Float!) {
+    updateRoomPricingConfig(hotelId: $hotelId, roomType: $roomType, basePrice: $basePrice, minPrice: $minPrice, maxPrice: $maxPrice) {
+      roomType
+      basePrice
+      minPrice
+      maxPrice
     }
   }
 `
@@ -68,6 +82,16 @@ export default function RoomPricing() {
     },
     onError: (error) => {
       console.error("Error updating room pricing:", error)
+    }
+  })
+
+  // Setup mutation for room pricing configuration
+  const [updateRoomPricingConfig] = useMutation(UPDATE_ROOM_PRICING_CONFIG, {
+    onCompleted: (data) => {
+      console.log("Room pricing configuration updated successfully:", data)
+    },
+    onError: (error) => {
+      console.error("Error updating room pricing configuration:", error)
     }
   })
 
@@ -139,18 +163,76 @@ export default function RoomPricing() {
           return acc
         }, {})
 
+        // Now fetch the pricing configuration
+        const pricingResponse = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            query: `
+  query {
+    roomPricing(hotelId: "${selectedHotel?.id}") {
+      roomType
+      basePrice
+      minPrice
+      maxPrice
+    }
+  }
+`,
+          }),
+        })
+
+        const pricingResult = await pricingResponse.json()
+        const pricingConfig = pricingResult.data?.roomPricing || []
+        
         // Create room types for pricing
         const roomTypesForPricing: RoomType[] = Object.entries(roomTypeGroups).map(
           ([typeName, data]: [string, any]) => {
             const avgPrice =
               data.rooms.reduce((sum: number, room: any) => sum + (room.pricePerNight || 1000), 0) / data.totalRooms
 
+            // Check if we have pricing configuration for this room type
+            const pricingConfig = pricingResult.data?.roomPricing?.find(
+              (p: any) => p.roomType === typeName
+            )
+
+            // Calculate base price and min/max prices
+            let basePrice, minPrice, maxPrice;
+            
+            if (pricingConfig) {
+              // Use the configured pricing
+              basePrice = pricingConfig.basePrice
+              minPrice = pricingConfig.minPrice
+              maxPrice = pricingConfig.maxPrice
+            } else {
+              // Use default calculations
+              basePrice = Math.round(avgPrice)
+              minPrice = Math.round(avgPrice * 0.5) // 50% of avg price as min
+              maxPrice = Math.round(avgPrice * 2) // 200% of avg price as max
+              
+              // Special cases for specific room types
+              if (typeName === "STANDARD") {
+                basePrice = 500
+                minPrice = 250
+                maxPrice = 1000
+              } else if (typeName === "DELUXE") {
+                basePrice = 300
+                minPrice = 150
+                maxPrice = 600
+              } else if (typeName === "SUITE") {
+                basePrice = 2000
+                minPrice = 1000
+                maxPrice = 4000
+              }
+            }
+
             return {
               id: typeName.toLowerCase().replace(/\s+/g, "-"),
               roomType: typeName,
-              price: Math.round(avgPrice),
-              minPrice: Math.round(avgPrice * 0.5), // 50% of avg price as min
-              maxPrice: Math.round(avgPrice * 2), // 200% of avg price as max
+              price: basePrice,
+              minPrice: minPrice,
+              maxPrice: maxPrice,
               available: data.totalRooms,
               roomIds: data.roomIds,
             }
@@ -232,7 +314,18 @@ export default function RoomPricing() {
 
         // Update each room's price in the backend
         for (const roomType of editableRoomTypes) {
-          // For each room ID in this room type
+          // First, update the pricing configuration
+          await updateRoomPricingConfig({
+            variables: {
+              hotelId: selectedHotel?.id,
+              roomType: roomType.roomType,
+              basePrice: roomType.price,
+              minPrice: roomType.minPrice,
+              maxPrice: roomType.maxPrice
+            }
+          })
+          
+          // Then update each room's price in the backend
           for (const roomId of roomType.roomIds) {
             await updateRoomPricing({
               variables: {
@@ -445,6 +538,40 @@ export default function RoomPricing() {
 
               {/* Weekend Rate Tab */}
               <TabsContent value="weekend" className="space-y-4">
+                <div className="flex items-center space-x-4 mb-4">
+                  <div className="text-sm font-medium">Weekend days:</div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="friday"
+                      checked={weekendDays.friday}
+                      onCheckedChange={(checked) => setWeekendDays((prev) => ({ ...prev, friday: checked === true }))}
+                    />
+                    <label htmlFor="friday" className="text-sm">
+                      Friday
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="saturday"
+                      checked={weekendDays.saturday}
+                      onCheckedChange={(checked) => setWeekendDays((prev) => ({ ...prev, saturday: checked === true }))}
+                    />
+                    <label htmlFor="saturday" className="text-sm">
+                      Saturday
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="sunday"
+                      checked={weekendDays.sunday}
+                      onCheckedChange={(checked) => setWeekendDays((prev) => ({ ...prev, sunday: checked === true }))}
+                    />
+                    <label htmlFor="sunday" className="text-sm">
+                      Sunday
+                    </label>
+                  </div>
+                </div>
+
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader>
