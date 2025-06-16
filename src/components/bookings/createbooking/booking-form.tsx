@@ -49,17 +49,13 @@ const bookingSchema = z.object({
     .array(
       z.object({
         roomType: z.enum(ROOM_TYPES, { required_error: "Room type is required" }),
-        numberOfRooms: z.coerce.number().int().min(1, { message: "At least 1 room is required" }),
+        numberOfRooms: z.coerce.number().int().min(1, { message: "At least 1 room is required" })
       })
     )
     .min(1, { message: "At least one room type must be selected" }),
 })
 
 type BookingFormValues = z.infer<typeof bookingSchema>
-
-interface BookingFormProps {
-  onSuccess?: () => void
-}
 
 // Function to get pricing config from localStorage
 function getPricingConfig(hotelId: string) {
@@ -70,6 +66,10 @@ function getPricingConfig(hotelId: string) {
     console.error("Error getting pricing config from localStorage:", error);
     return {};
   }
+}
+
+interface BookingFormProps {
+  onSuccess?: () => void
 }
 
 export default function BookingForm({ onSuccess }: BookingFormProps) {
@@ -86,7 +86,6 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
   // Access hotel context
   const { selectedHotel } = useHotelContext()
 
-  // Fetch pricing data
   const fetchPricingData = async () => {
     setPricingLoading(true)
     try {

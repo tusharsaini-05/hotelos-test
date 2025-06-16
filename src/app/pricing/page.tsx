@@ -183,10 +183,6 @@ export default function PricingPage() {
       const result = await response.json()
       console.log("Rooms API Response:", result)
 
-      if (result.errors) {
-        throw new Error(result.errors[0].message)
-      }
-
       if (result.data && result.data.rooms) {
         // Group rooms by type and calculate pricing
         const roomTypeGroups = result.data.rooms.reduce((acc: any, room: any) => {
