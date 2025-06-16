@@ -34,6 +34,9 @@ interface RoomType {
   maxPrice: number
   available: number
   roomIds: string[]
+  // Store original price ratios for consistent updates
+  minPriceRatio?: number
+  maxPriceRatio?: number
 }
 
 interface WeekendRate {
@@ -42,6 +45,9 @@ interface WeekendRate {
   minPrice: number
   maxPrice: number
   enabled: boolean
+  // Store original price ratios for consistent updates
+  minPriceRatio?: number
+  maxPriceRatio?: number
 }
 
 // Debounce hook for delayed validation
@@ -132,7 +138,6 @@ export default function PricingPage() {
       offset: 0
     ) {
       id
-      hotelId
       roomNumber
       roomType
       bedType
@@ -155,10 +160,8 @@ export default function PricingPage() {
       }
 
       if (result.data && result.data.rooms) {
-        const fetchedRooms = result.data.rooms
-
-        // Group rooms by room type to create room categories
-        const roomTypeGroups = fetchedRooms.reduce((acc: any, room: any) => {
+        // Group rooms by type and calculate pricing
+        const roomTypeGroups = result.data.rooms.reduce((acc: any, room: any) => {
           const roomType = room.roomType
           if (!acc[roomType]) {
             acc[roomType] = {
@@ -174,20 +177,31 @@ export default function PricingPage() {
           return acc
         }, {})
 
-        // Create room types for pricing
+        // Calculate pricing data for each room type
         const roomTypesForPricing: RoomType[] = Object.entries(roomTypeGroups).map(
           ([typeName, data]: [string, any]) => {
             const avgPrice =
               data.rooms.reduce((sum: number, room: any) => sum + (room.pricePerNight || 1000), 0) / data.totalRooms
 
+            // Calculate base price and min/max prices
+            const basePrice = Math.round(avgPrice)
+            const minPrice = Math.round(avgPrice * 0.5) // 50% of avg price as min
+            const maxPrice = Math.round(avgPrice * 2) // 200% of avg price as max
+            
+            // Store the price ratios for consistent updates
+            const minPriceRatio = 0.5 // 50% of base price
+            const maxPriceRatio = 2.0 // 200% of base price
+
             return {
               id: typeName.toLowerCase().replace(/\s+/g, "-"),
               roomType: typeName,
-              price: Math.round(avgPrice),
-              minPrice: Math.round(avgPrice * 0.5), // 50% of avg price as min
-              maxPrice: Math.round(avgPrice * 2), // 200% of avg price as max
+              price: basePrice,
+              minPrice: minPrice,
+              maxPrice: maxPrice,
               available: data.totalRooms,
               roomIds: data.roomIds,
+              minPriceRatio,
+              maxPriceRatio
             }
           },
         )
@@ -197,13 +211,21 @@ export default function PricingPage() {
         setEditableRoomTypes(JSON.parse(JSON.stringify(roomTypesForPricing)))
 
         // Initialize weekend rates
-        const initialWeekendRates = roomTypesForPricing.map((room) => ({
-          roomId: room.id,
-          price: Math.round(room.price * 1.25), // 25% higher than standard rate
-          minPrice: Math.round(room.minPrice * 1.25),
-          maxPrice: Math.round(room.maxPrice * 1.25),
-          enabled: true,
-        }))
+        const initialWeekendRates = roomTypesForPricing.map((room) => {
+          // Weekend rates are 25% higher than standard rates
+          const weekendRatio = 1.25
+          const weekendPrice = Math.round(room.price * weekendRatio)
+          
+          return {
+            roomId: room.id,
+            price: weekendPrice,
+            minPrice: Math.round(room.minPrice * weekendRatio),
+            maxPrice: Math.round(room.maxPrice * weekendRatio),
+            enabled: true,
+            minPriceRatio: room.minPriceRatio,
+            maxPriceRatio: room.maxPriceRatio
+          }
+        })
 
         setWeekendRates(initialWeekendRates)
         setEditableWeekendRates(JSON.parse(JSON.stringify(initialWeekendRates)))
@@ -255,6 +277,7 @@ export default function PricingPage() {
     })
   }, [debouncedTempPrices, editableRoomTypes, toast])
 
+  // Handle price change for standard rates
   const handlePriceChange = useCallback((id: string, field: "price" | "minPrice" | "maxPrice", value: string) => {
     const numValue = Number.parseFloat(value) || 0
 
@@ -265,15 +288,67 @@ export default function PricingPage() {
     }))
 
     // Update the actual state immediately for UI responsiveness
-    setEditableRoomTypes((prev) => prev.map((room) => (room.id === id ? { ...room, [field]: numValue } : room)))
+    setEditableRoomTypes((prev) => {
+      return prev.map((room) => {
+        if (room.id === id) {
+          const updatedRoom = { ...room, [field]: numValue }
+          
+          // If base price is changing, update min and max prices proportionally
+          if (field === "price") {
+            // Only update min/max if we have the ratios
+            if (room.minPriceRatio && room.maxPriceRatio) {
+              updatedRoom.minPrice = Math.round(numValue * room.minPriceRatio)
+              updatedRoom.maxPrice = Math.round(numValue * room.maxPriceRatio)
+            }
+          }
+          // If min price is changing, update the ratio
+          else if (field === "minPrice") {
+            updatedRoom.minPriceRatio = numValue / room.price
+          }
+          // If max price is changing, update the ratio
+          else if (field === "maxPrice") {
+            updatedRoom.maxPriceRatio = numValue / room.price
+          }
+          
+          return updatedRoom
+        }
+        return room
+      })
+    })
   }, [])
 
+  // Handle weekend price change
   const handleWeekendPriceChange = useCallback(
     (roomId: string, field: "price" | "minPrice" | "maxPrice", value: string) => {
       const numValue = Number.parseFloat(value) || 0
-      setEditableWeekendRates((prev) =>
-        prev.map((rate) => (rate.roomId === roomId ? { ...rate, [field]: numValue } : rate)),
-      )
+      
+      setEditableWeekendRates((prev) => {
+        return prev.map((rate) => {
+          if (rate.roomId === roomId) {
+            const updatedRate = { ...rate, [field]: numValue }
+            
+            // If base price is changing, update min and max prices proportionally
+            if (field === "price") {
+              // Only update min/max if we have the ratios
+              if (rate.minPriceRatio && rate.maxPriceRatio) {
+                updatedRate.minPrice = Math.round(numValue * rate.minPriceRatio)
+                updatedRate.maxPrice = Math.round(numValue * rate.maxPriceRatio)
+              }
+            }
+            // If min price is changing, update the ratio
+            else if (field === "minPrice") {
+              updatedRate.minPriceRatio = numValue / rate.price
+            }
+            // If max price is changing, update the ratio
+            else if (field === "maxPrice") {
+              updatedRate.maxPriceRatio = numValue / rate.price
+            }
+            
+            return updatedRate
+          }
+          return rate
+        })
+      })
     },
     [],
   )
@@ -616,8 +691,8 @@ export default function PricingPage() {
 
                 <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-sm text-blue-800">
                   <p>
-                    <strong>Note:</strong> Weekend rates apply to the days selected above. Disable specific room
-                    categories if you don't want to apply weekend pricing to them.
+                    <strong>Note:</strong> Weekend rates apply to the days selected above. These rates will be applied
+                    automatically for bookings on weekend days.
                   </p>
                 </div>
               </TabsContent>
