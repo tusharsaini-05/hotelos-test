@@ -1,5 +1,5 @@
 "use client"
-import { useMutation, useQuery } from "@apollo/client"
+import { useMutation } from "@apollo/client"
 import { CREATE_BOOKING } from "@/graphql/booking/mutations"
 import { useForm, useFieldArray, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -18,21 +18,9 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 import { useEffect, useState } from "react"
 import { useHotelContext } from "@/providers/hotel-provider"
-import { gql } from "@apollo/client"
 
 // Room types from backend enum
 const ROOM_TYPES = ["STANDARD", "DELUXE", "SUITE", "EXECUTIVE", "PRESIDENTIAL"] as const
-
-// GraphQL query to fetch room pricing
-const GET_ROOM_PRICING = gql`
-  query GetRooms($hotelId: String!) {
-    rooms(hotelId: $hotelId, limit: 100, offset: 0) {
-      id
-      roomType
-      pricePerNight
-    }
-  }
-`
 
 const bookingSourceOptions = [
   { value: "WEBSITE", label: "Website" },
@@ -62,7 +50,7 @@ const bookingSchema = z.object({
       z.object({
         roomType: z.enum(ROOM_TYPES, { required_error: "Room type is required" }),
         numberOfRooms: z.coerce.number().int().min(1, { message: "At least 1 room is required" }),
-      }),
+      })
     )
     .min(1, { message: "At least one room type must be selected" }),
 })
@@ -71,6 +59,17 @@ type BookingFormValues = z.infer<typeof bookingSchema>
 
 interface BookingFormProps {
   onSuccess?: () => void
+}
+
+// Function to get pricing config from localStorage
+function getPricingConfig(hotelId: string) {
+  try {
+    const configKey = `pricingConfig_${hotelId}`;
+    return JSON.parse(localStorage.getItem(configKey) || '{}');
+  } catch (error) {
+    console.error("Error getting pricing config from localStorage:", error);
+    return {};
+  }
 }
 
 export default function BookingForm({ onSuccess }: BookingFormProps) {
@@ -87,14 +86,7 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
   // Access hotel context
   const { selectedHotel } = useHotelContext()
 
-  // Fetch pricing data using Apollo Client
-  const { data: roomPricingData, loading: roomPricingLoading, refetch: refetchRoomPricing } = useQuery(GET_ROOM_PRICING, {
-    variables: { hotelId: selectedHotel?.id },
-    skip: !selectedHotel?.id,
-    fetchPolicy: "network-only", // Don't use cache to ensure we get the latest pricing
-  })
-
-  // Fetch pricing data from the pricing page
+  // Fetch pricing data
   const fetchPricingData = async () => {
     setPricingLoading(true)
     try {
@@ -140,45 +132,27 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
           return acc
         }, {})
 
+        // Get pricing configuration from localStorage
+        const pricingConfig = getPricingConfig(selectedHotel?.id || '');
+        
         // Calculate pricing data for each room type
         const pricingMap: Record<string, { basePrice: number; minPrice: number; maxPrice: number }> = {}
 
-        // Now fetch the pricing configuration from the pricing page
-        const pricingResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            query: `
-  query {
-    roomPricing(hotelId: "${selectedHotel?.id}") {
-      roomType
-      basePrice
-      minPrice
-      maxPrice
-    }
-  }
-`,
-          }),
-        })
+        // Process each room type
+        Object.entries(roomTypeGroups).forEach(([typeName, data]: [string, any]) => {
+          const avgPrice = data.prices.reduce((sum: number, price: number) => sum + price, 0) / data.totalRooms
 
-        const pricingResult = await pricingResponse.json()
-        
-        // If we have pricing configuration, use it
-        if (pricingResult.data && pricingResult.data.roomPricing) {
-          pricingResult.data.roomPricing.forEach((pricing: any) => {
-            pricingMap[pricing.roomType] = {
-              basePrice: pricing.basePrice,
-              minPrice: pricing.minPrice,
-              maxPrice: pricing.maxPrice,
-            }
-          })
-        } else {
-          // Otherwise, calculate from room data
-          Object.entries(roomTypeGroups).forEach(([typeName, data]: [string, any]) => {
-            const avgPrice = data.prices.reduce((sum: number, price: number) => sum + price, 0) / data.totalRooms
+          // Check if we have pricing configuration for this room type
+          const roomConfig = pricingConfig[typeName];
 
+          if (roomConfig) {
+            // Use the configured pricing
+            pricingMap[typeName] = {
+              basePrice: roomConfig.basePrice,
+              minPrice: roomConfig.minPrice,
+              maxPrice: roomConfig.maxPrice
+            };
+          } else {
             // For STANDARD room type
             if (typeName === "STANDARD") {
               pricingMap[typeName] = {
@@ -211,8 +185,8 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
                 maxPrice: Math.round(avgPrice * 2),
               }
             }
-          })
-        }
+          }
+        })
 
         setPricingData(pricingMap)
       }
@@ -228,19 +202,12 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
     }
   }
 
-  // Process room pricing data when it's available
-  useEffect(() => {
-    if (roomPricingData?.rooms) {
-      fetchPricingData()
-    }
-  }, [roomPricingData])
-
-  // Refetch pricing data when hotel changes
+  // Fetch pricing data when hotel changes
   useEffect(() => {
     if (selectedHotel?.id) {
-      refetchRoomPricing()
+      fetchPricingData()
     }
-  }, [selectedHotel, refetchRoomPricing])
+  }, [selectedHotel])
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
@@ -314,7 +281,7 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
     }
   }
 
-  if (pricingLoading || roomPricingLoading) {
+  if (pricingLoading) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="flex items-center space-x-2">

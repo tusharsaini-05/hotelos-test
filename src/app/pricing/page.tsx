@@ -26,17 +26,39 @@ const UPDATE_ROOM_PRICING = gql`
   }
 `
 
-// GraphQL mutation for updating room pricing configuration
-const UPDATE_ROOM_PRICING_CONFIG = gql`
-  mutation UpdateRoomPricingConfig($hotelId: String!, $roomType: String!, $basePrice: Float!, $minPrice: Float!, $maxPrice: Float!) {
-    updateRoomPricingConfig(hotelId: $hotelId, roomType: $roomType, basePrice: $basePrice, minPrice: $minPrice, maxPrice: $maxPrice) {
-      roomType
-      basePrice
-      minPrice
+// Use localStorage to store pricing configuration since the backend doesn't have this endpoint
+function savePricingConfig(hotelId: string, roomType: string, basePrice: number, minPrice: number, maxPrice: number) {
+  try {
+    // Get existing config or initialize empty object
+    const configKey = `pricingConfig_${hotelId}`;
+    const existingConfig = JSON.parse(localStorage.getItem(configKey) || '{}');
+    
+    // Update config for this room type
+    existingConfig[roomType] = {
+      basePrice,
+      minPrice,
       maxPrice
-    }
+    };
+    
+    // Save back to localStorage
+    localStorage.setItem(configKey, JSON.stringify(existingConfig));
+    return true;
+  } catch (error) {
+    console.error("Error saving pricing config to localStorage:", error);
+    return false;
   }
-`
+}
+
+// Function to get pricing config from localStorage
+function getPricingConfig(hotelId: string) {
+  try {
+    const configKey = `pricingConfig_${hotelId}`;
+    return JSON.parse(localStorage.getItem(configKey) || '{}');
+  } catch (error) {
+    console.error("Error getting pricing config from localStorage:", error);
+    return {};
+  }
+}
 
 interface RoomType {
   id: string
@@ -112,16 +134,6 @@ export default function PricingPage() {
     }
   })
 
-  // Setup mutation for room pricing configuration
-  const [updateRoomPricingConfig] = useMutation(UPDATE_ROOM_PRICING_CONFIG, {
-    onCompleted: (data) => {
-      console.log("Room pricing configuration updated successfully:", data)
-    },
-    onError: (error) => {
-      console.error("Error updating room pricing configuration:", error)
-    }
-  })
-
   // Debounced temp prices for validation
   const debouncedTempPrices = useDebounce(tempPrices, 800) // 800ms delay
 
@@ -192,29 +204,9 @@ export default function PricingPage() {
           acc[roomType].roomIds.push(room.id)
           return acc
         }, {})
-
-        // Now fetch the pricing configuration
-        const pricingResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            query: `
-  query {
-    roomPricing(hotelId: "${selectedHotel?.id}") {
-      roomType
-      basePrice
-      minPrice
-      maxPrice
-    }
-  }
-`,
-          }),
-        })
-
-        const pricingResult = await pricingResponse.json()
-        const pricingConfig = pricingResult.data?.roomPricing || []
+        
+        // Get pricing configuration from localStorage
+        const pricingConfig = getPricingConfig(selectedHotel?.id || '');
         
         // Calculate pricing data for each room type
         const roomTypesForPricing: RoomType[] = Object.entries(roomTypeGroups).map(
@@ -223,18 +215,16 @@ export default function PricingPage() {
               data.rooms.reduce((sum: number, room: any) => sum + (room.pricePerNight || 1000), 0) / data.totalRooms
 
             // Check if we have pricing configuration for this room type
-            const pricingConfig = pricingResult.data?.roomPricing?.find(
-              (p: any) => p.roomType === typeName
-            )
+            const roomConfig = pricingConfig[typeName];
 
             // Calculate base price and min/max prices
             let basePrice, minPrice, maxPrice;
             
-            if (pricingConfig) {
+            if (roomConfig) {
               // Use the configured pricing
-              basePrice = pricingConfig.basePrice
-              minPrice = pricingConfig.minPrice
-              maxPrice = pricingConfig.maxPrice
+              basePrice = roomConfig.basePrice;
+              minPrice = roomConfig.minPrice;
+              maxPrice = roomConfig.maxPrice;
             } else {
               // Use default calculations
               basePrice = Math.round(avgPrice)
@@ -396,16 +386,14 @@ export default function PricingPage() {
 
         // Update each room's price in the backend
         for (const roomType of editableRoomTypes) {
-          // First, update the pricing configuration
-          await updateRoomPricingConfig({
-            variables: {
-              hotelId: selectedHotel?.id,
-              roomType: roomType.roomType,
-              basePrice: roomType.price,
-              minPrice: roomType.minPrice,
-              maxPrice: roomType.maxPrice
-            }
-          })
+          // First, save the pricing configuration to localStorage
+          savePricingConfig(
+            selectedHotel?.id || '',
+            roomType.roomType,
+            roomType.price,
+            roomType.minPrice,
+            roomType.maxPrice
+          );
           
           // Then update each room's price in the backend
           for (const roomId of roomType.roomIds) {
