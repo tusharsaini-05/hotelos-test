@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 import { useEffect, useState } from "react"
 import { useHotelContext } from "@/providers/hotel-provider"
+import { gql } from "@apollo/client"
 
 // Room types from backend enum
 const ROOM_TYPES = ["STANDARD", "DELUXE", "SUITE", "EXECUTIVE", "PRESIDENTIAL"] as const

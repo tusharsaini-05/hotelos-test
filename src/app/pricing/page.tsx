@@ -12,14 +12,28 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
 import { useHotelContext } from "@/providers/hotel-provider"
 import { useSession } from "next-auth/react"
+import { useMutation } from "@apollo/client"
+import { gql } from "@apollo/client"
+
+// GraphQL mutation for updating room pricing
+const UPDATE_ROOM_PRICING = gql`
+  mutation UpdateRoomPricing($roomId: String!, $pricePerNight: Float!, $extraBedPrice: Float) {
+    updateRoomPricing(roomId: $roomId, pricePerNight: $pricePerNight, extraBedPrice: $extraBedPrice) {
+      id
+      pricePerNight
+      extraBedPrice
+    }
+  }
+`
 
 interface RoomType {
   id: string
-  name: string
+  roomType: string
   price: number
   minPrice: number
   maxPrice: number
   available: number
+  roomIds: string[]
 }
 
 interface WeekendRate {
@@ -75,6 +89,16 @@ export default function PricingPage() {
   // Validation state for debounced warnings
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [tempPrices, setTempPrices] = useState<Record<string, number>>({})
+
+  // Setup mutation hook
+  const [updateRoomPricing] = useMutation(UPDATE_ROOM_PRICING, {
+    onCompleted: (data) => {
+      console.log("Room pricing updated successfully:", data)
+    },
+    onError: (error) => {
+      console.error("Error updating room pricing:", error)
+    }
+  })
 
   // Debounced temp prices for validation
   const debouncedTempPrices = useDebounce(tempPrices, 800) // 800ms delay
@@ -141,10 +165,12 @@ export default function PricingPage() {
               rooms: [],
               totalRooms: 0,
               avgPrice: 0,
+              roomIds: [],
             }
           }
           acc[roomType].rooms.push(room)
           acc[roomType].totalRooms += 1
+          acc[roomType].roomIds.push(room.id)
           return acc
         }, {})
 
@@ -156,11 +182,12 @@ export default function PricingPage() {
 
             return {
               id: typeName.toLowerCase().replace(/\s+/g, "-"),
-              name: typeName,
+              roomType: typeName,
               price: Math.round(avgPrice),
               minPrice: Math.round(avgPrice * 0.5), // 50% of avg price as min
               maxPrice: Math.round(avgPrice * 2), // 200% of avg price as max
               available: data.totalRooms,
+              roomIds: data.roomIds,
             }
           },
         )
@@ -264,39 +291,41 @@ export default function PricingPage() {
         for (const room of editableRoomTypes) {
           if (room.minPrice > room.price || room.price > room.maxPrice) {
             throw new Error(
-              `Invalid price range for ${room.name}. Min price must be less than base price, and base price must be less than max price.`,
+              `Invalid price range for ${room.roomType}. Min price must be less than base price, and base price must be less than max price.`,
             )
           }
         }
+
+        // Update each room's price in the backend
+        for (const roomType of editableRoomTypes) {
+          // For each room ID in this room type
+          for (const roomId of roomType.roomIds) {
+            await updateRoomPricing({
+              variables: {
+                roomId: roomId,
+                pricePerNight: roomType.price,
+                extraBedPrice: null // You can add this if needed
+              }
+            })
+          }
+        }
+
+        // Update the main state with edited values
+        setRoomTypes(editableRoomTypes)
       } else if (activeTab === "weekend") {
         for (const rate of editableWeekendRates) {
           if (rate.enabled && (rate.minPrice > rate.price || rate.price > rate.maxPrice)) {
             const room = roomTypes.find((r) => r.id === rate.roomId)
             throw new Error(
-              `Invalid weekend price range for ${room?.name}. Min price must be less than base price, and base price must be less than max price.`,
+              `Invalid weekend price range for ${room?.roomType}. Min price must be less than base price, and base price must be less than max price.`,
             )
           }
         }
-      }
 
-      // In a real application, you would make an API call here
-      // For example:
-      // await updateRoomPricing({
-      //   variables: {
-      //     roomTypes: editableRoomTypes,
-      //     weekendRates: editableWeekendRates,
-      //     weekendDays,
-      //     rateType: activeTab
-      //   }
-      // })
-
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      // Update the main state with edited values
-      if (activeTab === "standard") {
-        setRoomTypes(editableRoomTypes)
-      } else if (activeTab === "weekend") {
+        // Here you would implement weekend rate updates
+        // This would require a separate mutation or endpoint for weekend rates
+        
+        // Update the main state with edited values
         setWeekendRates(editableWeekendRates)
       }
 
@@ -428,7 +457,7 @@ export default function PricingPage() {
 
                         return (
                           <TableRow key={room.id}>
-                            <TableCell className="font-medium">{room.name}</TableCell>
+                            <TableCell className="font-medium">{room.roomType}</TableCell>
                             <TableCell>
                               <Input
                                 type="number"
@@ -533,7 +562,7 @@ export default function PricingPage() {
                         const room = roomTypes.find((r) => r.id === rate.roomId)
                         return (
                           <TableRow key={rate.roomId}>
-                            <TableCell className="font-medium">{room?.name}</TableCell>
+                            <TableCell className="font-medium">{room?.roomType}</TableCell>
                             <TableCell>
                               <Switch
                                 checked={rate.enabled}
