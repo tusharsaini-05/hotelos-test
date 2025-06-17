@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion"
 import { useState, useEffect } from "react"
-import { Calendar, Printer, Search, RefreshCw, X, Loader2 } from "lucide-react"
+import { Calendar, Printer, Search, RefreshCw, X, Loader2, CreditCard, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
@@ -13,6 +13,8 @@ import type React from "react"
 import type { Booking } from "@/graphql/types/booking"
 import RoomAssignmentSection from "./roomAssignmentSection"
 import { gql, useMutation } from "@apollo/client"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 
 const CHECK_IN_BOOKING_MUTATION = gql`
   mutation CheckInBooking($bookingId: String!) {
@@ -27,6 +29,28 @@ const CHECK_IN_BOOKING_MUTATION = gql`
 const CHECK_OUT_BOOKING_MUTATION = gql`
   mutation CheckOutBooking($bookingId: String!) {
     checkoutBooking(bookingId: $bookingId)
+  }
+`
+
+const ADD_PAYMENT_MUTATION = gql`
+  mutation AddPayment($bookingId: String!, $paymentData: PaymentInput!) {
+    addPayment(
+      bookingId: $bookingId
+      paymentData: $paymentData
+    ) {
+      id
+      bookingNumber
+      paymentStatus
+      totalAmount
+      payments {
+        method
+        amount
+        transactionId
+        transactionDate
+        status
+        notes
+      }
+    }
   }
 `
 
@@ -67,6 +91,9 @@ type BookingCategory = "confirmed" | "checked_in" | "checked_out"
 
 export function BookingsList({ onSelectBooking }: BookingsListProps) {
   const [activeTab, setActiveTab] = useState<"confirmed" | "checked_in" | "checked_out">("confirmed")
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null)
+  const [selectedBookingData, setSelectedBookingData] = useState<Booking | null>(null)
+  const [paymentCollected, setPaymentCollected] = useState<boolean>(false)
 
   const [bookings, setBookings] = useState<{
     confirmed: Booking[]
@@ -88,6 +115,9 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
 
   const handleTabChange = (value: string) => {
     setActiveTab(value as BookingCategory)
+    setSelectedBookingId(null)
+    setSelectedBookingData(null)
+    setPaymentCollected(false)
   }
 
   useEffect(() => {
@@ -169,6 +199,79 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchBookingDetails = async (bookingId: string) => {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: `
+            query bookingId($bookingId: String!) {
+              booking(bookingId: $bookingId) {
+                id
+                bookingNumber
+                guest {
+                  firstName
+                  lastName
+                  email
+                }
+                checkInDate
+                checkOutDate
+                roomTypeBookings {
+                  roomType
+                  numberOfRooms
+                  roomIds
+                }
+                bookingStatus
+                paymentStatus
+                totalAmount
+                numberOfGuests
+                createdAt
+                payments {
+                  method
+                  amount
+                  transactionId
+                  transactionDate
+                  status
+                  notes
+                }
+              }
+            }
+          `,
+          variables: { bookingId },
+        }),
+      })
+      
+      const result = await response.json()
+      
+      if (result.errors) {
+        throw new Error(result.errors[0].message)
+      }
+      
+      const bookingData = result.data.booking
+      setSelectedBookingData(bookingData)
+      
+      // Check if payment is already collected
+      if (bookingData.paymentStatus === "PAID" || 
+          (bookingData.payments && bookingData.payments.length > 0 && 
+           bookingData.payments.reduce((sum: number, payment: any) => sum + Number(payment.amount), 0) >= bookingData.totalAmount)) {
+        setPaymentCollected(true)
+      } else {
+        setPaymentCollected(false)
+      }
+      
+    } catch (error) {
+      console.error("Error fetching booking details:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load booking details. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -364,6 +467,308 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
     document.body.removeChild(a)
   }
 
+  // Handle booking selection
+  const handleSelectBooking = (bookingId: string) => {
+    setSelectedBookingId(bookingId)
+    fetchBookingDetails(bookingId)
+  }
+
+  // Handle back button in booking details
+  const handleBackToList = () => {
+    setSelectedBookingId(null)
+    setSelectedBookingData(null)
+    setPaymentCollected(false)
+  }
+
+  // Handle payment collection
+  const [collectPayment, { loading: collectingPayment }] = useMutation(ADD_PAYMENT_MUTATION, {
+    onCompleted: (data) => {
+      toast({
+        title: "Payment Collected",
+        description: "Payment has been successfully collected.",
+      })
+      setPaymentCollected(true)
+      // Refresh booking details
+      fetchBookingDetails(selectedBookingId!)
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to collect payment. Please try again.",
+        variant: "destructive",
+      })
+    }
+  })
+
+  const handleCollectPayment = async () => {
+    if (!selectedBookingData) return
+    
+    try {
+      await collectPayment({
+        variables: {
+          bookingId: selectedBookingData.id,
+          paymentData: {
+            method: "CASH",
+            amount: selectedBookingData.totalAmount,
+            transactionId: `txn_${Date.now()}`,
+            notes: "Payment collected at check-in"
+          }
+        }
+      })
+    } catch (error) {
+      console.error("Error collecting payment:", error)
+    }
+  }
+
+  // Handle check-in
+  const [checkInBooking, { loading: checkingIn }] = useMutation(CHECK_IN_BOOKING_MUTATION, {
+    onCompleted: (data) => {
+      toast({
+        title: "Success",
+        description: "Guest successfully checked in",
+      })
+      fetchBookings()
+      handleBackToList()
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to check in guest. Please try again.",
+        variant: "destructive",
+      })
+    }
+  })
+
+  const handleCheckIn = async () => {
+    if (!selectedBookingId || !paymentCollected) return
+    
+    try {
+      await checkInBooking({
+        variables: {
+          bookingId: selectedBookingId
+        }
+      })
+    } catch (error) {
+      console.error("Error checking in:", error)
+    }
+  }
+
+  // Handle check-out
+  const [checkOutBooking, { loading: checkingOut }] = useMutation(CHECK_OUT_BOOKING_MUTATION, {
+    onCompleted: (data) => {
+      toast({
+        title: "Success",
+        description: "Guest successfully checked out",
+      })
+      fetchBookings()
+      handleBackToList()
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to check out guest. Please try again.",
+        variant: "destructive",
+      })
+    }
+  })
+
+  const handleCheckOut = async (bookingId: string) => {
+    try {
+      await checkOutBooking({
+        variables: {
+          bookingId
+        }
+      })
+    } catch (error) {
+      console.error("Error checking out:", error)
+    }
+  }
+
+  // Render booking details view
+  if (selectedBookingId && selectedBookingData) {
+    // Calculate payments collected total
+    const paymentsCollected = selectedBookingData.payments?.reduce((sum: number, payment: any) => 
+      sum + (Number(payment.amount) || 0), 0) || 0
+    
+    // Calculate balance to collect
+    const balanceToCollect = Number(selectedBookingData.totalAmount) - paymentsCollected
+
+    return (
+      <div className="container mx-auto">
+        <Button variant="ghost" onClick={handleBackToList} className="mb-4">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Bookings
+        </Button>
+        
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader className="border-b">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500">Booking {selectedBookingData.bookingNumber}</p>
+                    <h2 className="mt-1 text-xl font-semibold">
+                      {selectedBookingData.guest?.firstName} {selectedBookingData.guest?.lastName}
+                    </h2>
+                  </div>
+                  <Badge className={
+                    selectedBookingData.bookingStatus === "CONFIRMED" ? "bg-blue-100 text-blue-800" :
+                    selectedBookingData.bookingStatus === "CHECKED_IN" ? "bg-green-100 text-green-800" :
+                    "bg-gray-100 text-gray-800"
+                  }>
+                    {selectedBookingData.bookingStatus.replace("_", " ")}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="mb-6">
+                  <h3 className="text-lg font-medium">{selectedBookingData.guest?.firstName} {selectedBookingData.guest?.lastName}</h3>
+                  <p className="text-gray-500">
+                    {selectedBookingData.numberOfGuests || 1} {selectedBookingData.numberOfGuests === 1 ? 'Guest' : 'Guests'} · 
+                    {selectedBookingData.roomTypeBookings?.[0]?.numberOfRooms || 1} {selectedBookingData.roomTypeBookings?.[0]?.numberOfRooms === 1 ? 'Room' : 'Rooms'} · 
+                    {calculateNights(selectedBookingData.checkInDate, selectedBookingData.checkOutDate)} {calculateNights(selectedBookingData.checkInDate, selectedBookingData.checkOutDate) === 1 ? 'Night' : 'Nights'}
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  <div className="grid grid-cols-2 gap-4 rounded-lg border p-4">
+                    <div>
+                      <p className="font-medium">
+                        {calculateNights(selectedBookingData.checkInDate, selectedBookingData.checkOutDate)} 
+                        {calculateNights(selectedBookingData.checkInDate, selectedBookingData.checkOutDate) === 1 ? ' Night' : ' Nights'}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {formatDateRange(selectedBookingData.checkInDate, selectedBookingData.checkOutDate)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 rounded-lg border p-4">
+                    <div>
+                      <p className="font-medium">{selectedBookingData.numberOfGuests || 1} Guests</p>
+                      <p className="text-sm text-gray-500">
+                        {selectedBookingData.numberOfGuests || 1} {selectedBookingData.numberOfGuests === 1 ? 'Adult' : 'Adults'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-500">Email: {selectedBookingData.guest?.email}</p>
+                    </div>
+                  </div>
+
+                  {/* Room Assignment Section */}
+                  <div className="rounded-lg border p-4">
+                    <h4 className="font-medium mb-4">Room Assignment</h4>
+                    <RoomAssignmentSection
+                      booking={{
+                        roomTypeBookings: selectedBookingData.roomTypeBookings,
+                        bookingStatus: selectedBookingData.bookingStatus,
+                        bookingId: selectedBookingData.id,
+                      }}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="lg:col-span-1">
+            <Card>
+              <CardHeader className="border-b">
+                <div className="flex items-center justify-between">
+                  <CardTitle>Price Summary</CardTitle>
+                  <span className="text-sm text-green-500">
+                    {selectedBookingData.paymentStatus === "PAID" ? "Paid" : "Pay at Hotel"}
+                  </span>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="mb-6">
+                  <Button variant="outline" className="w-full justify-between">
+                    <span>Total Bill</span>
+                    <span>₹{Number(selectedBookingData.totalAmount).toLocaleString()}</span>
+                  </Button>
+                  <div className="mt-4 px-4">
+                    <div className="flex justify-between py-2">
+                      <span className="text-gray-600">{selectedBookingData.roomTypeBookings?.[0]?.roomType}</span>
+                      <span>₹{Number(selectedBookingData.totalAmount).toLocaleString()}</span>
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {selectedBookingData.roomTypeBookings?.[0]?.numberOfRooms || 1} Room ×
+                      {calculateNights(selectedBookingData.checkInDate, selectedBookingData.checkOutDate)} Nights
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-between border-t pt-4">
+                  <span>Payment Collected</span>
+                  <span>₹{paymentsCollected.toLocaleString()}</span>
+                </div>
+
+                <div className="mt-4 flex justify-between border-t pt-4">
+                  <span>Balance to Collect</span>
+                  <span className="font-medium">₹{balanceToCollect.toLocaleString()}</span>
+                </div>
+
+                <Button
+                  className="mt-6 w-full bg-green-500 hover:bg-green-600"
+                  onClick={handleCollectPayment}
+                  disabled={collectingPayment || balanceToCollect <= 0}
+                >
+                  {collectingPayment ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : balanceToCollect <= 0 ? (
+                    "Payment Complete"
+                  ) : (
+                    <>
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      Collect Payment
+                    </>
+                  )}
+                </Button>
+
+                {selectedBookingData.bookingStatus === "CONFIRMED" && (
+                  <Button
+                    className="mt-4 w-full"
+                    onClick={handleCheckIn}
+                    disabled={checkingIn || !paymentCollected}
+                  >
+                    {checkingIn ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Checking In...
+                      </>
+                    ) : (
+                      "Check In"
+                    )}
+                  </Button>
+                )}
+
+                {selectedBookingData.bookingStatus === "CHECKED_IN" && (
+                  <Button
+                    className="mt-4 w-full"
+                    onClick={() => handleCheckOut(selectedBookingData.id)}
+                    disabled={checkingOut}
+                  >
+                    {checkingOut ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Checking Out...
+                      </>
+                    ) : (
+                      "Check Out"
+                    )}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="container mx-auto">
       <div className="mb-6 flex items-center justify-between">
@@ -429,7 +834,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                 upcomingBookings.length === 1 ? "Booking" : "Bookings"
               } - ${upcomingRoomCount} ${upcomingRoomCount === 1 ? "Room" : "Rooms"}`}
               bookings={upcomingBookings}
-              onSelectBooking={onSelectBooking}
+              onSelectBooking={handleSelectBooking}
               calculateNights={calculateNights}
               countAssignedRoomsInBooking={countAssignedRoomsInBooking}
               formatDateRange={formatDateRange}
@@ -443,7 +848,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                 todayBookings.length === 1 ? "Booking" : "Bookings"
               } - ${todayRoomCount} ${todayRoomCount === 1 ? "Room" : "Rooms"}`}
               bookings={todayBookings}
-              onSelectBooking={onSelectBooking}
+              onSelectBooking={handleSelectBooking}
               showDownload
               onDownload={handleDownloadTodaysArrivals}
               calculateNights={calculateNights}
@@ -459,7 +864,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                 previousBookings.length === 1 ? "Booking" : "Bookings"
               } - ${previousRoomCount} ${previousRoomCount === 1 ? "Room" : "Rooms"}`}
               bookings={previousBookings}
-              onSelectBooking={onSelectBooking}
+              onSelectBooking={handleSelectBooking}
               calculateNights={calculateNights}
               countAssignedRoomsInBooking={countAssignedRoomsInBooking}
               formatDateRange={formatDateRange}
@@ -489,87 +894,6 @@ function BookingsSection({
   countAssignedRoomsInBooking,
   formatDateRange,
 }: BookingsSectionProps) {
-  const { toast } = useToast()
-  const [checkInBooking] = useMutation(CHECK_IN_BOOKING_MUTATION)
-  const [checkOutBooking] = useMutation(CHECK_OUT_BOOKING_MUTATION)
-  const [loadingId, setLoadingId] = useState<string | null>(null)
-
-  const handleCheckIn = async (bookingId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setLoadingId(bookingId)
-
-    try {
-      const { data } = await checkInBooking({
-        variables: { bookingId },
-        update: (cache, { data }) => {
-          if (data?.checkInBooking) {
-            cache.modify({
-              id: cache.identify(data.checkInBooking),
-              fields: {
-                bookingStatus: () => "CHECKED_IN",
-                checkInTime: () => new Date().toISOString(),
-              },
-            })
-          }
-        },
-      })
-
-      if (data?.checkInBooking) {
-        toast({
-          title: "Success",
-          description: "Booking checked in successfully",
-          variant: "default",
-        })
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to check in booking",
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingId(null)
-    }
-  }
-
-  const handleCheckOut = async (bookingId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setLoadingId(bookingId)
-
-    try {
-      const { data } = await checkOutBooking({
-        variables: { bookingId },
-        update: (cache, { data }) => {
-          if (data?.checkOutBooking?.success) {
-            cache.modify({
-              id: `Booking:${bookingId}`,
-              fields: {
-                bookingStatus: () => "CHECKED_OUT",
-                checkOutTime: () => new Date().toISOString(),
-              },
-            })
-          }
-        },
-      })
-
-      if (data?.checkOutBooking?.success) {
-        toast({
-          title: "Success",
-          description: "Booking checked out successfully",
-          variant: "default",
-        })
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to check out booking",
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingId(null)
-    }
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -627,32 +951,7 @@ function BookingsSection({
                   <div className="text-sm text-gray-500">{booking.numberOfGuests || 1} Guest(s)</div>
                 </div>
                 <span className={`text-sm font-medium ${getStatusColor(booking.bookingStatus)}`}>
-                  {/* Check In/Out Button */}
-                  <div className="flex justify-end">
-                    {booking.bookingStatus === "CONFIRMED" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-green-600 border-green-600 hover:bg-green-50"
-                        onClick={(e) => handleCheckIn(booking.id, e)}
-                        disabled={loadingId === booking.id}
-                      >
-                        {loadingId === booking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Check In"}
-                      </Button>
-                    )}
-
-                    {booking.bookingStatus === "CHECKED_IN" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-blue-600 border-blue-600 hover:bg-blue-50"
-                        onClick={(e) => handleCheckOut(booking.id, e)}
-                        disabled={loadingId === booking.id}
-                      >
-                        {loadingId === booking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Check Out"}
-                      </Button>
-                    )}
-                  </div>
+                  {booking.bookingStatus.replace("_", " ")}
                 </span>
               </div>
 
