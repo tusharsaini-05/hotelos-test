@@ -12,7 +12,6 @@ import { useHotelContext } from "@/providers/hotel-provider"
 import type React from "react"
 import type { Booking } from "@/graphql/types/booking"
 import { gql, useMutation } from "@apollo/client"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
 const CHECK_IN_BOOKING_MUTATION = gql`
@@ -53,16 +52,8 @@ const ADD_PAYMENT_MUTATION = gql`
   }
 `
 
-interface BookingsSectionProps {
-  title: string
-  subtitle: string
-  bookings: Booking[]
+interface BookingsListProps {
   onSelectBooking: (bookingId: string) => void
-  showDownload?: boolean
-  onDownload?: () => void
-  calculateNights: (checkInDate: string, checkOutDate: string) => number
-  countAssignedRoomsInBooking: (booking: Booking) => number
-  formatDateRange: (checkIn: string, checkOut: string) => string
 }
 
 enum RoomType {
@@ -80,10 +71,6 @@ enum BookingStatus {
   CHECKED_OUT = "checked_out",
   CANCELLED = "cancelled",
   NO_SHOW = "no_show",
-}
-
-interface BookingsListProps {
-  onSelectBooking: (bookingId: string) => void
 }
 
 type BookingCategory = "confirmed" | "checked_in" | "checked_out"
@@ -600,8 +587,8 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
         
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <Card>
-              <CardHeader className="border-b">
+            <div className="bg-white rounded-lg border shadow-sm">
+              <div className="border-b p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-500">Booking {selectedBookingData.bookingNumber}</p>
@@ -617,8 +604,8 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                     {selectedBookingData.bookingStatus.replace("_", " ")}
                   </Badge>
                 </div>
-              </CardHeader>
-              <CardContent className="p-6">
+              </div>
+              <div className="p-6">
                 <div className="mb-6">
                   <h3 className="text-lg font-medium">{selectedBookingData.guest?.firstName} {selectedBookingData.guest?.lastName}</h3>
                   <p className="text-gray-500">
@@ -667,21 +654,21 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                     ))}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
 
           <div className="lg:col-span-1">
-            <Card>
-              <CardHeader className="border-b">
+            <div className="bg-white rounded-lg border shadow-sm">
+              <div className="border-b p-4">
                 <div className="flex items-center justify-between">
-                  <CardTitle>Price Summary</CardTitle>
+                  <h3 className="font-semibold">Price Summary</h3>
                   <span className="text-sm text-green-500">
                     {selectedBookingData.paymentStatus === "PAID" ? "Paid" : "Pay at Hotel"}
                   </span>
                 </div>
-              </CardHeader>
-              <CardContent className="p-6">
+              </div>
+              <div className="p-6">
                 <div className="mb-6">
                   <Button variant="outline" className="w-full justify-between">
                     <span>Total Bill</span>
@@ -762,8 +749,8 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                     )}
                   </Button>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -828,48 +815,250 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
         </div>
       ) : (
         <>
-          {upcomingBookings.length > 0 && (
-            <BookingsSection
-              title="Upcoming"
-              subtitle={`${upcomingBookings.length} ${
-                upcomingBookings.length === 1 ? "Booking" : "Bookings"
-              } - ${upcomingRoomCount} ${upcomingRoomCount === 1 ? "Room" : "Rooms"}`}
-              bookings={upcomingBookings}
-              onSelectBooking={handleSelectBooking}
-              calculateNights={calculateNights}
-              countAssignedRoomsInBooking={countAssignedRoomsInBooking}
-              formatDateRange={formatDateRange}
-            />
-          )}
-
+          {/* Today's Bookings */}
           {todayBookings.length > 0 && (
-            <BookingsSection
-              title="Today"
-              subtitle={`${todayBookings.length} ${
-                todayBookings.length === 1 ? "Booking" : "Bookings"
-              } - ${todayRoomCount} ${todayRoomCount === 1 ? "Room" : "Rooms"}`}
-              bookings={todayBookings}
-              onSelectBooking={handleSelectBooking}
-              showDownload
-              onDownload={handleDownloadTodaysArrivals}
-              calculateNights={calculateNights}
-              countAssignedRoomsInBooking={countAssignedRoomsInBooking}
-              formatDateRange={formatDateRange}
-            />
+            <div className="mb-8">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold">Today</h2>
+                  <p className="text-sm text-gray-500">
+                    {todayBookings.length} {todayBookings.length === 1 ? "Booking" : "Bookings"} - {todayRoomCount} {todayRoomCount === 1 ? "Room" : "Rooms"}
+                  </p>
+                </div>
+                <Button variant="ghost" className="text-red-500 hover:text-red-600" onClick={handleDownloadTodaysArrivals}>
+                  <Printer className="mr-2 h-4 w-4" />
+                  Download Today's Arrival
+                </Button>
+              </div>
+
+              <div className="overflow-hidden rounded-lg border bg-white">
+                <table className="w-full">
+                  <thead className="bg-gray-50 text-left text-sm font-medium text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3">NAME</th>
+                      <th className="px-4 py-3">BOOKING ID</th>
+                      <th className="px-4 py-3">ROOM NIGHTS</th>
+                      <th className="px-4 py-3">PAYMENTS</th>
+                      <th className="px-4 py-3">BOOKING INFO</th>
+                      <th className="px-4 py-3 text-right">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {todayBookings.map((booking) => {
+                      const nights = calculateNights(booking.checkInDate, booking.checkOutDate);
+                      const roomCount = booking.roomTypeBookings?.[0]?.numberOfRooms || 1;
+                      
+                      return (
+                        <tr 
+                          key={booking.id} 
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => handleSelectBooking(booking.id)}
+                        >
+                          <td className="px-4 py-4">
+                            <div className="font-medium">{booking.guest.firstName} {booking.guest.lastName}</div>
+                            <div className="text-sm text-gray-500">{booking.numberOfGuests || 1} Guest(s)</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div>{booking.bookingNumber}</div>
+                            <div className="text-xs text-gray-500">
+                              {formatDateRange(booking.checkInDate, booking.checkOutDate)}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div>{roomCount} Room</div>
+                            <div className="text-sm text-gray-500">{nights} {nights === 1 ? 'Night' : 'Nights'}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className={booking.paymentStatus === "PAID" ? "text-green-600" : ""}>
+                              {booking.paymentStatus === "PAID" ? "Pre-Paid" : "Pay at Hotel"}
+                            </div>
+                            <div className="text-sm">₹{Number(booking.totalAmount).toLocaleString()}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="text-sm text-gray-500">
+                              Booking.com #{booking.id.substring(0, 8)}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button 
+                                variant="outline" 
+                                className="bg-gray-200 hover:bg-gray-300"
+                              >
+                                No Show
+                              </Button>
+                              <Button 
+                                className="bg-green-500 hover:bg-green-600 text-white"
+                              >
+                                Checkin Now
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
+          {/* Upcoming Bookings */}
+          {upcomingBookings.length > 0 && (
+            <div className="mb-8">
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold">Upcoming</h2>
+                <p className="text-sm text-gray-500">
+                  {upcomingBookings.length} {upcomingBookings.length === 1 ? "Booking" : "Bookings"} - {upcomingRoomCount} {upcomingRoomCount === 1 ? "Room" : "Rooms"}
+                </p>
+              </div>
+
+              <div className="overflow-hidden rounded-lg border bg-white">
+                <table className="w-full">
+                  <thead className="bg-gray-50 text-left text-sm font-medium text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3">NAME</th>
+                      <th className="px-4 py-3">BOOKING ID</th>
+                      <th className="px-4 py-3">ROOM NIGHTS</th>
+                      <th className="px-4 py-3">PAYMENTS</th>
+                      <th className="px-4 py-3">BOOKING INFO</th>
+                      <th className="px-4 py-3 text-right">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {upcomingBookings.map((booking) => {
+                      const nights = calculateNights(booking.checkInDate, booking.checkOutDate);
+                      const roomCount = booking.roomTypeBookings?.[0]?.numberOfRooms || 1;
+                      
+                      return (
+                        <tr 
+                          key={booking.id} 
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => handleSelectBooking(booking.id)}
+                        >
+                          <td className="px-4 py-4">
+                            <div className="font-medium">{booking.guest.firstName} {booking.guest.lastName}</div>
+                            <div className="text-sm text-gray-500">{booking.numberOfGuests || 1} Guest(s)</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div>{booking.bookingNumber}</div>
+                            <div className="text-xs text-gray-500">
+                              {formatDateRange(booking.checkInDate, booking.checkOutDate)}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div>{roomCount} Room</div>
+                            <div className="text-sm text-gray-500">{nights} {nights === 1 ? 'Night' : 'Nights'}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className={booking.paymentStatus === "PAID" ? "text-green-600" : ""}>
+                              {booking.paymentStatus === "PAID" ? "Pre-Paid" : "Pay at Hotel"}
+                            </div>
+                            <div className="text-sm">₹{Number(booking.totalAmount).toLocaleString()}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="text-sm text-gray-500">
+                              Booking.com #{booking.id.substring(0, 8)}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                printBookingDetails(booking, countAssignedRoomsInBooking, calculateNights);
+                              }}
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Previous Bookings */}
           {previousBookings.length > 0 && (
-            <BookingsSection
-              title="Previous"
-              subtitle={`${previousBookings.length} ${
-                previousBookings.length === 1 ? "Booking" : "Bookings"
-              } - ${previousRoomCount} ${previousRoomCount === 1 ? "Room" : "Rooms"}`}
-              bookings={previousBookings}
-              onSelectBooking={handleSelectBooking}
-              calculateNights={calculateNights}
-              countAssignedRoomsInBooking={countAssignedRoomsInBooking}
-              formatDateRange={formatDateRange}
-            />
+            <div className="mb-8">
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold">Previous</h2>
+                <p className="text-sm text-gray-500">
+                  {previousBookings.length} {previousBookings.length === 1 ? "Booking" : "Bookings"} - {previousRoomCount} {previousRoomCount === 1 ? "Room" : "Rooms"}
+                </p>
+              </div>
+
+              <div className="overflow-hidden rounded-lg border bg-white">
+                <table className="w-full">
+                  <thead className="bg-gray-50 text-left text-sm font-medium text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3">NAME</th>
+                      <th className="px-4 py-3">BOOKING ID</th>
+                      <th className="px-4 py-3">ROOM NIGHTS</th>
+                      <th className="px-4 py-3">PAYMENTS</th>
+                      <th className="px-4 py-3">BOOKING INFO</th>
+                      <th className="px-4 py-3 text-right">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {previousBookings.map((booking) => {
+                      const nights = calculateNights(booking.checkInDate, booking.checkOutDate);
+                      const roomCount = booking.roomTypeBookings?.[0]?.numberOfRooms || 1;
+                      
+                      return (
+                        <tr 
+                          key={booking.id} 
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => handleSelectBooking(booking.id)}
+                        >
+                          <td className="px-4 py-4">
+                            <div className="font-medium">{booking.guest.firstName} {booking.guest.lastName}</div>
+                            <div className="text-sm text-gray-500">{booking.numberOfGuests || 1} Guest(s)</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div>{booking.bookingNumber}</div>
+                            <div className="text-xs text-gray-500">
+                              {formatDateRange(booking.checkInDate, booking.checkOutDate)}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div>{roomCount} Room</div>
+                            <div className="text-sm text-gray-500">{nights} {nights === 1 ? 'Night' : 'Nights'}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className={booking.paymentStatus === "PAID" ? "text-green-600" : ""}>
+                              {booking.paymentStatus === "PAID" ? "Pre-Paid" : "Pay at Hotel"}
+                            </div>
+                            <div className="text-sm">₹{Number(booking.totalAmount).toLocaleString()}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="text-sm text-gray-500">
+                              Booking.com #{booking.id.substring(0, 8)}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                printBookingDetails(booking, countAssignedRoomsInBooking, calculateNights);
+                              }}
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {bookings[activeTab].length === 0 && (
@@ -881,130 +1070,6 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
         </>
       )}
     </div>
-  )
-}
-
-function BookingsSection({
-  title,
-  subtitle,
-  bookings,
-  onSelectBooking,
-  showDownload = false,
-  onDownload,
-  calculateNights,
-  countAssignedRoomsInBooking,
-  formatDateRange,
-}: BookingsSectionProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="mb-8"
-    >
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">{title}</h2>
-          <p className="text-sm text-gray-500">{subtitle}</p>
-        </div>
-        {showDownload && (
-          <Button variant="ghost" className="text-red-500 hover:text-red-600" onClick={onDownload}>
-            <Printer className="mr-2 h-4 w-4" />
-            Download Today's Arrival
-          </Button>
-        )}
-      </div>
-
-      <div className="space-y-4">
-        {bookings.map((booking) => {
-          const nights = calculateNights(booking.checkInDate, booking.checkOutDate)
-
-          const getStatusColor = (status: string) => {
-            switch (status) {
-              case "CONFIRMED":
-                return "text-green-500"
-              case "CHECKED_IN":
-                return "text-blue-500"
-              case "CHECKED_OUT":
-                return "text-purple-500"
-              case "CANCELLED":
-                return "text-red-500"
-              case "NO_SHOW":
-                return "text-yellow-500"
-              default:
-                return "text-gray-500"
-            }
-          }
-
-          return (
-            <motion.div
-              key={booking.id}
-              whileHover={{ scale: 1.01 }}
-              className="rounded-lg border bg-white shadow-sm p-4 cursor-pointer space-y-4"
-              onClick={() => onSelectBooking(booking.id)}
-            >
-              {/* Guest Name and Status */}
-              <div className="flex justify-between items-center border-b pb-2">
-                <div>
-                  <div className="text-base font-semibold">
-                    {booking.guest.firstName} {booking.guest.lastName}
-                  </div>
-                  <div className="text-sm text-gray-500">{booking.numberOfGuests || 1} Guest(s)</div>
-                </div>
-                <span className={`text-sm font-medium ${getStatusColor(booking.bookingStatus)}`}>
-                  {booking.bookingStatus.replace("_", " ")}
-                </span>
-              </div>
-
-              {/* Row-wise Table Style Layout */}
-              <div className="grid grid-cols-2 gap-y-2 text-sm text-gray-700 pt-2">
-                <div className="text-gray-500 font-medium">Booking ID</div>
-                <div>{booking.bookingNumber}</div>
-
-                <div className="text-gray-500 font-medium">Payment</div>
-                <div>
-                  {booking.paymentStatus === "PAID" ? "Paid" : "Pay at Hotel"}
-                  <div className="text-xs text-gray-400">₹{Number(booking.totalAmount).toLocaleString("en-IN")}</div>
-                </div>
-
-                <div className="text-gray-500 font-medium">{nights} Night(s)</div>
-                <div>
-                  <div className="text-xs text-gray-400">
-                    {formatDateRange(booking.checkInDate, booking.checkOutDate)}
-                  </div>
-                </div>
-
-                <div className="text-gray-500 font-medium">Booking Info</div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">Click to view / print</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      printBookingDetails(booking, countAssignedRoomsInBooking, calculateNights)
-                    }}
-                  >
-                    <Printer className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Room Rows */}
-                {booking.roomTypeBookings?.map((rtb, index) => (
-                  <div key={index} className="col-span-2 mt-2">
-                    <div className="text-gray-500 font-medium">Room {index + 1}</div>
-                    <div className="text-sm">
-                      {rtb.roomType} - {rtb.numberOfRooms} {rtb.numberOfRooms === 1 ? 'Room' : 'Rooms'}
-                      {rtb.roomIds && rtb.roomIds.length > 0 ? ' (Assigned)' : ' (Unassigned)'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )
-        })}
-      </div>
-    </motion.div>
   )
 }
 
