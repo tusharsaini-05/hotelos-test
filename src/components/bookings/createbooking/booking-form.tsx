@@ -253,6 +253,11 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
     }
 
     try {
+      console.log("Submitting booking data:", {
+        ...data,
+        hotelId: selectedHotel.id,
+      })
+
       const result = await createBooking({
         variables: {
           bookingData: {
@@ -263,16 +268,22 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
         },
       })
 
-      toast({
-        title: "Booking Created",
-        description: `Booking #${result.data.createBooking.bookingNumber} created successfully`,
-      })
+      console.log("Booking creation result:", result)
 
-      if (onSuccess) {
-        onSuccess()
+      if (result && result.data && result.data.createBooking) {
+        toast({
+          title: "Booking Created",
+          description: `Booking #${result.data.createBooking.bookingNumber} created successfully`,
+        })
+
+        if (onSuccess) {
+          onSuccess()
+        }
+      } else {
+        throw new Error("Failed to create booking - no data returned")
       }
     } catch (error: any) {
-      console.error(error)
+      console.error("Error creating booking:", error)
       toast({
         title: "Error",
         description: error.message || "Failed to create booking",
