@@ -1162,5 +1162,3 @@ function printBookingDetails(
     printWindow.print()
   }
 }
-
-// Export as named export to match the import
