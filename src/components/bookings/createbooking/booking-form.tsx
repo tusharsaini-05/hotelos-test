@@ -253,47 +253,20 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
     }
 
     try {
-      console.log("Submitting booking data:", {
-        ...data,
-        hotelId: selectedHotel.id,
-      })
-
       const result = await createBooking({
         variables: {
           bookingData: {
             ...data,
             hotelId: selectedHotel.id,
-            ratePlan: "standard", // Default rate plan
+            ratePlan: null,
           },
         },
       })
 
-      console.log("Booking creation result:", result)
-
-      if (result && result.data && result.data.createBooking) {
-        toast({
-          title: "Booking Created",
-          description: `Booking #${result.data.createBooking.bookingNumber} created successfully`,
-        })
-
-        if (onSuccess) {
-          onSuccess()
-        }
-      } else {
-        console.error("No booking data returned:", result)
-        toast({
-          title: "Error",
-          description: "Failed to create booking. Please check the console for details.",
-          variant: "destructive",
-        })
-      }
-    } catch (error: any) {
-      console.error("Error creating booking:", error)
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create booking",
-        variant: "destructive",
-      })
+      alert("Booking created: " + result.data.createBooking.bookingNumber);
+    } catch (error) {
+      console.error(error)
+      alert("Error creating booking");
     }
   }
 
