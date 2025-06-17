@@ -280,7 +280,12 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
           onSuccess()
         }
       } else {
-        throw new Error("Failed to create booking - no data returned")
+        console.error("No booking data returned:", result)
+        toast({
+          title: "Error",
+          description: "Failed to create booking. Please check the console for details.",
+          variant: "destructive",
+        })
       }
     } catch (error: any) {
       console.error("Error creating booking:", error)
