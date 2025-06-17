@@ -11,7 +11,6 @@ import { format } from "date-fns"
 import { useHotelContext } from "@/providers/hotel-provider"
 import type React from "react"
 import type { Booking } from "@/graphql/types/booking"
-import RoomAssignmentSection from "./roomAssignmentSection"
 import { gql, useMutation } from "@apollo/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -657,13 +656,15 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                   {/* Room Assignment Section */}
                   <div className="rounded-lg border p-4">
                     <h4 className="font-medium mb-4">Room Assignment</h4>
-                    <RoomAssignmentSection
-                      booking={{
-                        roomTypeBookings: selectedBookingData.roomTypeBookings,
-                        bookingStatus: selectedBookingData.bookingStatus,
-                        bookingId: selectedBookingData.id,
-                      }}
-                    />
+                    {selectedBookingData.roomTypeBookings?.map((rtb, index) => (
+                      <div key={index} className="mb-2">
+                        <p className="font-medium">{rtb.roomType}</p>
+                        <p className="text-sm text-gray-500">
+                          {rtb.numberOfRooms} {rtb.numberOfRooms === 1 ? 'Room' : 'Rooms'}
+                          {rtb.roomIds && rtb.roomIds.length > 0 ? ' (Assigned)' : ' (Unassigned)'}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </CardContent>
@@ -989,13 +990,15 @@ function BookingsSection({
                 </div>
 
                 {/* Room Rows */}
-                <RoomAssignmentSection
-                  booking={{
-                    roomTypeBookings: booking.roomTypeBookings,
-                    bookingStatus: booking.bookingStatus,
-                    bookingId: booking.id,
-                  }}
-                />
+                {booking.roomTypeBookings?.map((rtb, index) => (
+                  <div key={index} className="col-span-2 mt-2">
+                    <div className="text-gray-500 font-medium">Room {index + 1}</div>
+                    <div className="text-sm">
+                      {rtb.roomType} - {rtb.numberOfRooms} {rtb.numberOfRooms === 1 ? 'Room' : 'Rooms'}
+                      {rtb.roomIds && rtb.roomIds.length > 0 ? ' (Assigned)' : ' (Unassigned)'}
+                    </div>
+                  </div>
+                ))}
               </div>
             </motion.div>
           )
