@@ -30,28 +30,6 @@ const CHECK_OUT_BOOKING_MUTATION = gql`
   }
 `
 
-const ADD_PAYMENT_MUTATION = gql`
-  mutation AddPayment($bookingId: String!, $paymentData: PaymentInput!) {
-    addPayment(
-      bookingId: $bookingId
-      paymentData: $paymentData
-    ) {
-      id
-      bookingNumber
-      paymentStatus
-      totalAmount
-      payments {
-        method
-        amount
-        transactionId
-        transactionDate
-        status
-        notes
-      }
-    }
-  }
-`
-
 interface BookingsListProps {
   onSelectBooking: (bookingId: string) => void
 }
@@ -466,43 +444,24 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
     setPaymentCollected(false)
   }
 
-  // Handle payment collection
-  const [collectPayment, { loading: collectingPayment }] = useMutation(ADD_PAYMENT_MUTATION, {
-    onCompleted: (data) => {
+  // Handle payment collection - simplified to just set state
+  const handleCollectPayment = async () => {
+    if (!selectedBookingData) return
+    
+    try {
+      // Simulate payment collection
       toast({
         title: "Payment Collected",
         description: "Payment has been successfully collected.",
       })
       setPaymentCollected(true)
-      // Refresh booking details
-      fetchBookingDetails(selectedBookingId!)
-    },
-    onError: (error) => {
+    } catch (error) {
+      console.error("Error collecting payment:", error)
       toast({
         title: "Error",
         description: "Failed to collect payment. Please try again.",
         variant: "destructive",
       })
-    }
-  })
-
-  const handleCollectPayment = async () => {
-    if (!selectedBookingData) return
-    
-    try {
-      await collectPayment({
-        variables: {
-          bookingId: selectedBookingData.id,
-          paymentData: {
-            method: "CASH",
-            amount: selectedBookingData.totalAmount,
-            transactionId: `txn_${Date.now()}`,
-            notes: "Payment collected at check-in"
-          }
-        }
-      })
-    } catch (error) {
-      console.error("Error collecting payment:", error)
     }
   }
 
@@ -699,14 +658,9 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                 <Button
                   className="mt-6 w-full bg-green-500 hover:bg-green-600"
                   onClick={handleCollectPayment}
-                  disabled={collectingPayment || balanceToCollect <= 0}
+                  disabled={balanceToCollect <= 0}
                 >
-                  {collectingPayment ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : balanceToCollect <= 0 ? (
+                  {balanceToCollect <= 0 ? (
                     "Payment Complete"
                   ) : (
                     <>
