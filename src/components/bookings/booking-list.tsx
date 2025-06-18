@@ -718,7 +718,7 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
 
                 {selectedBookingData.bookingStatus === "CONFIRMED" && (
                   <Button
-                    className="mt-4 w-full"
+                    className={`mt-4 w-full ${paymentCollected ? "bg-green-500 hover:bg-green-600" : "bg-gray-400 cursor-not-allowed"}`}
                     onClick={handleCheckIn}
                     disabled={checkingIn || !paymentCollected}
                   >
