@@ -13,6 +13,7 @@ import type React from "react"
 import type { Booking } from "@/graphql/types/booking"
 import { gql, useMutation } from "@apollo/client"
 import { Badge } from "@/components/ui/badge"
+import RoomAssignmentSection from "./roomAssignmentSection"
 
 const CHECK_IN_BOOKING_MUTATION = gql`
   mutation CheckInBooking($bookingId: String!) {
@@ -602,15 +603,13 @@ export function BookingsList({ onSelectBooking }: BookingsListProps) {
                   {/* Room Assignment Section */}
                   <div className="rounded-lg border p-4">
                     <h4 className="font-medium mb-4">Room Assignment</h4>
-                    {selectedBookingData.roomTypeBookings?.map((rtb, index) => (
-                      <div key={index} className="mb-2">
-                        <p className="font-medium">{rtb.roomType}</p>
-                        <p className="text-sm text-gray-500">
-                          {rtb.numberOfRooms} {rtb.numberOfRooms === 1 ? 'Room' : 'Rooms'}
-                          {rtb.roomIds && rtb.roomIds.length > 0 ? ' (Assigned)' : ' (Unassigned)'}
-                        </p>
-                      </div>
-                    ))}
+                    <RoomAssignmentSection
+                      booking={{
+                        roomTypeBookings: selectedBookingData.roomTypeBookings,
+                        bookingStatus: selectedBookingData.bookingStatus,
+                        bookingId: selectedBookingData.id,
+                      }}
+                    />
                   </div>
                 </div>
               </div>
